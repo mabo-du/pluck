@@ -283,16 +283,6 @@ pre-commit install
 └── TestDownloadAndInstallMocked (4 tests)
 ```
 
-## 💡 Why This Exists
-
-My brother (and I) struggle with:
-
-- ❌ Not knowing how to install GitHub projects
-- ❌ Installing to wrong directories
-- ❌ Messy installations inside other installations
-- ❌ Not tracking what's installed
-
-**This fixes all of that.**
 
 ## 📄 License
 
