@@ -1,0 +1,46 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": ".claude/hooks/mimir-post-write.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Write|Edit|MultiEdit|Bash"
+      },
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": ".claude/hooks/mimir-post-write.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Write|Edit|MultiEdit|Bash"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": ".claude/hooks/mimir-pre-search.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|Glob"
+      },
+      {
+        "hooks": [
+          {
+            "command": ".claude/hooks/mimir-pre-search.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash|Glob"
+      }
+    ]
+  }
+}

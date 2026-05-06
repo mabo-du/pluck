@@ -1,0 +1,9 @@
+{
+  "generatedBy": "plan-forge-setup",
+  "generatedAt": "2026-04-05T05:52:56Z",
+  "preset": "custom",
+  "prompts": [],
+  "skills": [],
+  "instructions": ["ai-plan-hardening-runbook.instructions.md","architecture-principles.instructions.md","git-workflow.instructions.md","project-principles.instructions.md"],
+  "hooks": [".github/hooks/plan-forge.json"]
+}

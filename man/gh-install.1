@@ -1,0 +1,115 @@
+.TH GH-INSTALL 1 "April 2026" "gh-install 0.1.0" "User Commands"
+.SH NAME
+gh-install \- Install GitHub repositories automatically
+.SH SYNOPSIS
+.B gh-install
+\fIcommand\fR [\fIoptions\fR]
+.SH DESCRIPTION
+\fBgh-install\fR simplifies installing GitHub repositories by auto-detecting the project type and applying the appropriate installation strategy.
+.SH COMMANDS
+.TP
+.B install <url> [options]
+Install from a GitHub URL or gist.
+.TP
+.B update <name> [--force]
+Update an installed app to the latest version.
+.TP
+.B info <name>
+Show detailed information about an installed app.
+.TP
+.B list
+List all installed applications.
+.TP
+.B uninstall <name> [--force]
+Uninstall an application.
+.TP
+.B remove <name> [--force]
+Alias for uninstall.
+.TP
+.B verify
+Check if installed apps are still valid.
+.TP
+.B clean [--force]
+Remove orphaned registry entries.
+.TP
+.B stats
+Show installation statistics.
+.TP
+.B doctor
+Check tool availability (git, python3, npm, go, cargo, make).
+.TP
+.B config [key] [value]
+View or set configuration values.
+.TP
+.B search <query>
+Search GitHub repositories.
+.TP
+.B export <file>
+Export registry to a JSON file.
+.TP
+.B import <file>
+Import registry from a JSON file.
+.TP
+.B completion <shell>
+Generate shell completion script (bash/zsh).
+.TP
+.B version
+Show version.
+.TP
+.B help
+Show usage information.
+.SH OPTIONS
+.TP
+.B --dir <path>
+Install to a custom directory.
+.TP
+.B --dry-run
+Preview without making changes.
+.TP
+.B --force
+Skip confirmation prompts.
+.TP
+.B --shallow
+Use shallow clone (--depth 1).
+.TP
+.B --ref <ref>
+Clone a specific branch or tag.
+.TP
+.B --method <method>
+Force a specific install method.
+.TP
+.B --yes
+Non-interactive mode (alias for --force).
+.TP
+.B --json
+Output in JSON format.
+.TP
+.B --no-color
+Disable colored output.
+.SH FILES
+.TP
+.B ~/.gh-install-registry.json
+JSON file tracking installed applications.
+.TP
+.B ~/.config/gh-install/config.json
+User configuration file.
+.SH EXAMPLES
+.TP
+Install a repository:
+.B gh-install install https://github.com/user/repo
+.TP
+Install with shallow clone:
+.B gh-install install https://github.com/user/repo --shallow
+.TP
+Install to custom directory:
+.B gh-install install https://github.com/user/repo --dir /opt/apps
+.TP
+List installed apps:
+.B gh-install list
+.TP
+Check tool availability:
+.B gh-install doctor
+.SH AUTHOR
+gh-install contributors
+.SH LICENSE
+MIT

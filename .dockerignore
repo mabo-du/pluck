@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+.pytest_cache
+.ruff_cache
+tests/
+docs/
+man/
+CHANGELOG.md
+CONTRIBUTING.md
+AGENTS.md
+CLAUDE.md
+.pre-commit-config.yaml
