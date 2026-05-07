@@ -187,10 +187,10 @@ pip install -e .
 
 ```bash
 # Once published to PyPI:
-pip install pluck
+pip install pluck-cli
 ```
 
-> **Note**: pluck is not yet published to PyPI. Install from source above, or use the Docker image.
+> **Note**: `pluck-cli` is not yet published to PyPI. Install from source above, or use the Docker image.
 
 ### Via Docker
 
