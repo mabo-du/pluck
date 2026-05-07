@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from gh_install import (
     SHARED_PATHS,
     VALID_METHODS,
+    _detect_host_type,
     _extract_global_flags,
     _format_bytes,
     _get_disk_size,
@@ -27,7 +28,7 @@ from gh_install import (
     import_registry,
     info_app,
     load_registry,
-    parse_github_url,
+    parse_repo_url,
     register_app,
     save_registry,
     stats_command,
@@ -37,71 +38,173 @@ from gh_install import (
 )
 
 
-class TestParseGithubUrl:
-    def test_standard_https_url(self):
-        result = parse_github_url("https://github.com/owner/repo")
+class TestParseRepoUrl:
+    def test_github_https(self):
+        result = parse_repo_url("https://github.com/owner/repo")
         assert result is not None
         assert result["owner"] == "owner"
         assert result["repo"] == "repo"
+        assert result["host"] == "github.com"
+        assert result["host_type"] == "github"
         assert result["url"] == "https://github.com/owner/repo"
         assert result.get("is_gist") is False
 
-    def test_standard_http_url(self):
-        result = parse_github_url("http://github.com/owner/repo")
+    def test_github_http(self):
+        result = parse_repo_url("http://github.com/owner/repo")
+        assert result is not None
+        assert result["owner"] == "owner"
+        assert result["repo"] == "repo"
+        assert result["host_type"] == "github"
+
+    def test_github_ssh(self):
+        result = parse_repo_url("git@github.com:owner/repo.git")
+        assert result is not None
+        assert result["owner"] == "owner"
+        assert result["repo"] == "repo"
+        assert result["host_type"] == "github"
+
+    def test_github_url_with_git_extension(self):
+        result = parse_repo_url("https://github.com/owner/repo.git")
+        assert result is not None
+        assert result["repo"] == "repo"
+
+    def test_github_url_with_subpath(self):
+        """Tree/branch paths in URL should not prevent parsing."""
+        result = parse_repo_url("https://github.com/owner/repo/tree/main")
         assert result is not None
         assert result["owner"] == "owner"
         assert result["repo"] == "repo"
 
-    def test_ssh_url(self):
-        result = parse_github_url("git@github.com:owner/repo.git")
-        assert result is not None
-        assert result["owner"] == "owner"
-        assert result["repo"] == "repo"
-
-    def test_url_with_git_extension(self):
-        result = parse_github_url("https://github.com/owner/repo.git")
-        assert result is not None
-        assert result["repo"] == "repo"
-
-    def test_invalid_url(self):
-        result = parse_github_url("https://gitlab.com/owner/repo")
-        assert result is None
-
-    def test_invalid_url_random_string(self):
-        result = parse_github_url("not-a-url")
-        assert result is None
-
-    def test_url_with_trailing_slash(self):
-        result = parse_github_url("https://github.com/owner/repo/")
-        assert result is None
-
-    def test_url_with_subpaths(self):
-        result = parse_github_url("https://github.com/owner/repo/tree/main")
-        assert result is None
-
-    def test_url_with_user_and_repo_hyphens(self):
-        result = parse_github_url("https://github.com/my-org/my-repo")
+    def test_github_hyphenated(self):
+        result = parse_repo_url("https://github.com/my-org/my-repo")
         assert result is not None
         assert result["owner"] == "my-org"
         assert result["repo"] == "my-repo"
+        assert result["host_type"] == "github"
+
+    # ── Other forges ──
+
+    def test_gitlab_https(self):
+        result = parse_repo_url("https://gitlab.com/gitlab-org/gitlab")
+        assert result is not None
+        assert result["owner"] == "gitlab-org"
+        assert result["repo"] == "gitlab"
+        assert result["host"] == "gitlab.com"
+        assert result["host_type"] == "gitlab"
+
+    def test_gitlab_ssh(self):
+        result = parse_repo_url("git@gitlab.com:owner/project.git")
+        assert result is not None
+        assert result["owner"] == "owner"
+        assert result["repo"] == "project"
+        assert result["host_type"] == "gitlab"
+
+    def test_codeberg_https(self):
+        result = parse_repo_url("https://codeberg.org/user/repo")
+        assert result is not None
+        assert result["owner"] == "user"
+        assert result["repo"] == "repo"
+        assert result["host"] == "codeberg.org"
+        assert result["host_type"] == "codeberg"
+
+    def test_bitbucket_https(self):
+        result = parse_repo_url("https://bitbucket.org/owner/repo")
+        assert result is not None
+        assert result["owner"] == "owner"
+        assert result["repo"] == "repo"
+        assert result["host_type"] == "bitbucket"
+
+    def test_sourcehut_https(self):
+        result = parse_repo_url("https://git.sr.ht/~user/repo")
+        assert result is not None
+        assert result["owner"] == "~user"
+        assert result["repo"] == "repo"
+        assert result["host"] == "git.sr.ht"
+        assert result["host_type"] == "sourcehut"
+
+    def test_gitea_https(self):
+        result = parse_repo_url("https://gitea.com/user/repo")
+        assert result is not None
+        assert result["owner"] == "user"
+        assert result["repo"] == "repo"
+        assert result["host_type"] == "gitea"
+
+    def test_self_hosted_generic(self):
+        """Self-hosted git instances should parse as 'generic' type."""
+        result = parse_repo_url("https://git.example.com/team/project")
+        assert result is not None
+        assert result["owner"] == "team"
+        assert result["repo"] == "project"
+        assert result["host_type"] == "generic"
+
+    def test_self_hosted_ssh(self):
+        result = parse_repo_url("git@git.internal.company.com:org/repo.git")
+        assert result is not None
+        assert result["owner"] == "org"
+        assert result["repo"] == "repo"
+        assert result["host_type"] == "generic"
+
+    def test_ssh_protocol_url(self):
+        result = parse_repo_url("ssh://git@gitlab.com/owner/project.git")
+        assert result is not None
+        assert result["owner"] == "owner"
+        assert result["repo"] == "project"
+
+    def test_git_protocol_url(self):
+        result = parse_repo_url("git://github.com/owner/repo.git")
+        assert result is not None
+        assert result["owner"] == "owner"
+        assert result["repo"] == "repo"
+
+    def test_trailing_slash(self):
+        """New parser handles trailing slashes gracefully."""
+        result = parse_repo_url("https://gitlab.com/owner/repo/")
+        assert result is not None
+        assert result["owner"] == "owner"
+        assert result["repo"] == "repo"
+
+    def test_invalid_url_random_string(self):
+        result = parse_repo_url("not-a-url")
+        assert result is None
+
+    def test_invalid_url_empty(self):
+        result = parse_repo_url("")
+        assert result is None
+
+    def test_detect_host_type_known(self):
+        assert _detect_host_type("github.com") == "github"
+        assert _detect_host_type("gitlab.com") == "gitlab"
+        assert _detect_host_type("codeberg.org") == "codeberg"
+        assert _detect_host_type("bitbucket.org") == "bitbucket"
+        assert _detect_host_type("git.sr.ht") == "sourcehut"
+        assert _detect_host_type("gitea.com") == "gitea"
+
+    def test_detect_host_type_unknown(self):
+        assert _detect_host_type("git.example.com") == "generic"
+        assert _detect_host_type("192.168.1.100") == "generic"
+
+    def test_detect_host_type_www_prefix(self):
+        assert _detect_host_type("www.github.com") == "github"
+        assert _detect_host_type("WWW.GITLAB.COM") == "gitlab"
 
 
 class TestGistUrl:
     def test_gist_https_url(self):
-        result = parse_github_url("https://gist.github.com/user/abc123def")
+        result = parse_repo_url("https://gist.github.com/user/abc123def")
         assert result is not None
         assert result["owner"] == "user"
         assert result["repo"] == "gist-abc123def"
         assert result.get("is_gist") is True
+        assert result["host_type"] == "github"
 
     def test_gist_ssh_url(self):
-        result = parse_github_url("git@gist.github.com:user/abc123def")
+        result = parse_repo_url("git@gist.github.com:user/abc123def")
         assert result is not None
         assert result["owner"] == "user"
         assert result["repo"] == "gist-abc123def"
 
     def test_gist_url_with_git_extension(self):
-        result = parse_github_url("https://gist.github.com/user/abc123def.git")
+        result = parse_repo_url("https://gist.github.com/user/abc123def.git")
         assert result is not None
         assert result["repo"] == "gist-abc123def"
 
@@ -109,6 +212,7 @@ class TestGistUrl:
         result = _parse_gist_url("https://gist.github.com/test/abcd1234")
         assert result is not None
         assert result["url"] == "https://gist.github.com/test/abcd1234.git"
+        assert result.get("is_gist") is True
 
 
 class TestDetectInstallMethod:
@@ -364,12 +468,15 @@ class TestParseArgs:
 
 
 class TestDryRun:
-    @patch("gh_install.parse_github_url")
+    @patch("gh_install.parse_repo_url")
     def test_dry_run_returns_path_without_cloning(self, mock_parse):
         mock_parse.return_value = {
+            "host": "github.com",
+            "host_type": "github",
             "owner": "test",
             "repo": "myrepo",
             "url": "https://github.com/test/myrepo",
+            "is_gist": False,
         }
         tmp = tempfile.mkdtemp()
         install_dir = Path(tmp) / "install"
@@ -857,13 +964,16 @@ class TestDownloadAndInstallMocked:
 
     @patch("gh_install.subprocess.run")
     @patch("gh_install.tempfile.mkdtemp")
-    @patch("gh_install.parse_github_url")
+    @patch("gh_install.parse_repo_url")
     def test_download_and_install_success(self, mock_parse, mock_mkdtemp, mock_run):
         """Test happy path with mocked subprocess."""
         mock_parse.return_value = {
+            "host": "github.com",
+            "host_type": "github",
             "owner": "test",
             "repo": "myrepo",
             "url": "https://github.com/test/myrepo",
+            "is_gist": False,
         }
         # Use pre-created temp dir so we don't hit the patched mkdtemp
         mock_mkdtemp.return_value = str(self.tmp_clone)
@@ -884,13 +994,16 @@ class TestDownloadAndInstallMocked:
 
     @patch("gh_install.subprocess.run")
     @patch("gh_install.tempfile.mkdtemp")
-    @patch("gh_install.parse_github_url")
+    @patch("gh_install.parse_repo_url")
     def test_download_and_install_retry_on_failure(self, mock_parse, mock_mkdtemp, mock_run):
         """Test that clone retries on CalledProcessError."""
         mock_parse.return_value = {
+            "host": "github.com",
+            "host_type": "github",
             "owner": "test",
             "repo": "myrepo",
             "url": "https://github.com/test/myrepo",
+            "is_gist": False,
         }
         mock_mkdtemp.return_value = str(self.tmp_clone)
         (self.tmp_clone / "myrepo").mkdir(parents=True)
@@ -914,7 +1027,7 @@ class TestDownloadAndInstallMocked:
 
     @patch("gh_install.subprocess.run")
     @patch("gh_install.tempfile.mkdtemp")
-    @patch("gh_install.parse_github_url")
+    @patch("gh_install.parse_repo_url")
     def test_download_and_install_invalid_url(self, mock_parse, mock_mkdtemp, mock_run):
         """Test that invalid URL returns None."""
         mock_parse.return_value = None
@@ -924,12 +1037,14 @@ class TestDownloadAndInstallMocked:
 
     @patch("gh_install.subprocess.run")
     @patch("gh_install.tempfile.mkdtemp")
-    @patch("gh_install.parse_github_url")
+    @patch("gh_install.parse_repo_url")
     def test_download_and_install_timeout_retry(self, mock_parse, mock_mkdtemp, mock_run):
         """Test that clone retries on TimeoutExpired."""
         import subprocess as sp
 
         mock_parse.return_value = {
+            "host": "github.com",
+            "host_type": "github",
             "owner": "test",
             "repo": "myrepo",
             "url": "https://github.com/test/myrepo",

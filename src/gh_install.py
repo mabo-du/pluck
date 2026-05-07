@@ -68,7 +68,7 @@ def _save_user_config(config):
 
 def print_usage():
     commands = [
-        ("install <url> [opts]", "Install from GitHub URL"),
+        ("install <url> [opts]", "Install from any git repo URL"),
         ("update <name> [--force]", "Update an installed app"),
         ("info <name>", "Show app details"),
         ("list", "List installed apps"),
@@ -79,7 +79,7 @@ def print_usage():
         ("stats", "Show installation statistics"),
         ("doctor", "Check tool availability"),
         ("config [key] [value]", "View/set config"),
-        ("search <query>", "Search GitHub repos"),
+        ("search <query>", "Search GitHub repos (other forges coming)"),
         ("export <file>", "Export registry"),
         ("import <file>", "Import registry"),
         ("completion <shell>", "Generate shell completion"),
@@ -115,10 +115,12 @@ def print_usage():
 
 
 def _parse_gist_url(url):
-    """Extract gist info from a gist.github.com URL."""
+    """Extract gist info from a gist URL (currently GitHub Gists only)."""
     match = re.search(GIST_PATTERN, url)
     if match:
         return {
+            "host": "gist.github.com",
+            "host_type": "github",
             "owner": match.group(1),
             "repo": f"gist-{match.group(2)}",
             "url": f"https://gist.github.com/{match.group(1)}/{match.group(2)}.git",
@@ -181,7 +183,7 @@ complete -F _gh_install_completion gh-install
 _gh_install() {
     local -a commands
     commands=(
-        'install:Install from GitHub URL'
+        'install:Install from any git repo URL'
         'update:Update an installed app'
         'info:Show app details'
         'list:List installed apps'
@@ -290,28 +292,67 @@ def print_error(text):
     print(f"{Colors.RED}✗ {text}{Colors.END}")
 
 
-def parse_github_url(url):
-    """Extract owner/repo from GitHub URL or gist URL"""
+def _detect_host_type(host):
+    """Identify the forge type from a git hosting domain."""
+    host_lower = host.lower().removeprefix("www.")
+    forge_map = {
+        "github.com": "github",
+        "gitlab.com": "gitlab",
+        "codeberg.org": "codeberg",
+        "bitbucket.org": "bitbucket",
+        "git.sr.ht": "sourcehut",
+        "gitea.com": "gitea",
+    }
+    return forge_map.get(host_lower, "generic")
+
+
+def parse_repo_url(url):
+    """Extract owner/repo from any git hosting URL.
+
+    Supports GitHub, GitLab, Codeberg, Bitbucket, SourceHut, Gitea,
+    self-hosted instances, and any other standard git hosting.
+    """
+    # Try gist detection first
     gist_info = _parse_gist_url(url)
     if gist_info:
         return gist_info
 
+    # Normalize: strip trailing slash
+    url = url.rstrip("/")
+
     patterns = [
-        r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$",
-        r"github\.com/([^/]+)/([^/]+?)(?:\.git)?$",
+        # HTTPS: https://host/owner/repo[.git][/extra/path]
+        r"https?://([^/]+)/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$",
+        # SSH git@host:owner/repo[.git]
+        r"git@([^:]+):([^/]+)/([^/]+?)(?:\.git)?$",
+        # SSH ssh://git@host/owner/repo[.git]
+        r"ssh://git@([^/]+)/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$",
+        # git protocol: git://host/owner/repo[.git]
+        r"git://([^/]+)/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$",
     ]
 
     for pattern in patterns:
         match = re.search(pattern, url)
         if match:
+            host = match.group(1)
+            owner = match.group(2)
+            repo = match.group(3)
+            host_type = _detect_host_type(host)
+            normalized_url = f"https://{host}/{owner}/{repo}"
             return {
-                "owner": match.group(1),
-                "repo": match.group(2),
-                "url": f"https://github.com/{match.group(1)}/{match.group(2)}",
+                "host": host,
+                "host_type": host_type,
+                "owner": owner,
+                "repo": repo,
+                "url": normalized_url,
                 "is_gist": False,
             }
 
     return None
+
+
+# Backward-compat alias — remove in a future release
+parse_github_url = parse_repo_url
 
 
 def detect_install_method(repo_path, method_priority=None):
@@ -531,7 +572,7 @@ def _get_disk_size(path):
 
 
 def download_and_install(
-    github_url,
+    repo_url,
     install_dir=None,
     dry_run=False,
     shallow=False,
@@ -540,7 +581,7 @@ def download_and_install(
     timeout=None,
     retries=0,
 ):
-    """Download and install a GitHub repository"""
+    """Download and install a repository from any git hosting URL"""
 
     if install_dir is None:
         user_config = _load_user_config()
@@ -550,14 +591,15 @@ def download_and_install(
         else:
             install_dir = DEFAULT_INSTALL_DIR
 
-    # Parse GitHub URL
-    repo_info = parse_github_url(github_url)
+    # Parse repository URL
+    repo_info = parse_repo_url(repo_url)
     if not repo_info:
-        print_error(f"Invalid GitHub URL: {github_url}")
+        print_error(f"Invalid repository URL: {repo_url}")
         return None
 
     repo_type = "Gist" if repo_info.get("is_gist") else "Repository"
-    print(f"  {repo_type}: {repo_info['owner']}/{repo_info['repo']}")
+    host_label = repo_info.get("host", "unknown")
+    print(f"  {repo_type}: {repo_info['owner']}/{repo_info['repo']} ({host_label})")
 
     # Validate repo name to prevent path traversal
     safe_name = _sanitize_repo_name(repo_info["repo"])
@@ -639,7 +681,7 @@ def download_and_install(
 
     # Register the installation
     if installed_path:
-        register_app(repo_info["repo"], github_url, installed_path, install_method)
+        register_app(repo_info["repo"], repo_url, installed_path, install_method)
         # Post-install summary
         print()
         print(f"  {Colors.CYAN}Summary:{Colors.END}")
@@ -835,8 +877,8 @@ def config_command(key=None, value=None):
 
 
 def search_github(query, limit=10):
-    """Search GitHub repositories using the API"""
-    print(f"  Searching for '{query}'...")
+    """Search repositories using the GitHub API (GitHub-only; other forges coming)."""
+    print(f"  Searching GitHub for '{query}'...")
 
     url = f"https://api.github.com/search/repositories?q={urllib.parse.quote(query)}&sort=stars&order=desc&per_page={limit}"
     try:
@@ -902,13 +944,13 @@ def import_registry(filepath):
     return True
 
 
-def register_app(repo_name, github_url, install_path, install_method, skip_hook=False):
+def register_app(repo_name, repo_url, install_path, install_method, skip_hook=False):
     """Register an installed application"""
 
     registry = load_registry()
 
     registry["apps"][repo_name] = {
-        "url": github_url,
+        "url": repo_url,
         "path": str(install_path),
         "method": install_method,
         "installed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1302,7 +1344,7 @@ def main():
         )
 
         if not urls:
-            print_error("Please provide a GitHub URL")
+            print_error("Please provide a repository URL")
             sys.exit(1)
 
         if method and method not in VALID_METHODS:
