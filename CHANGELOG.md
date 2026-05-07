@@ -6,10 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Post-install hook path double-nesting (`~/.config/pluck/pluck/hooks/` → `~/.config/pluck/hooks/`)
+- PyPI license metadata now shows correctly (inline table format)
+
+## [0.2.0] - 2026-05-08
+
 ### Changed
-- **Renamed project to pluck** — new CLI command, registry path (`~/.pluck-registry.json`), config path (`~/.config/pluck/`), with automatic migration from old paths
-- **Generalized URL parser** — `parse_repo_url()` now accepts any git hosting URL (GitHub, GitLab, Codeberg, Bitbucket, SourceHut, Gitea, Gogs, Pagure, Forgejo, self-hosted)
-- **Forge-agnostic** — all install methods work with repos from any forge; only the `search` command remains GitHub-only
+- **Published to PyPI as `pluck-cli`** — `pip install pluck-cli`
 
 ### Added
 - `--timeout <secs>` flag — set timeout for git clone operations

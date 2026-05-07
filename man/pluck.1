@@ -1,4 +1,4 @@
-.TH PLUCK 1 "May 2026" "pluck 0.1.0" "User Commands"
+.TH PLUCK 1 "May 2026" "pluck 0.2.0" "User Commands"
 .SH NAME
 pluck \- Pluck git repos from any forge, auto-install
 .SH SYNOPSIS
@@ -29,7 +29,7 @@ Alias for uninstall.
 .B verify
 Check if installed apps are still valid.
 .TP
-.B clean [--force]
+.B clean [--force] [--dry-run]
 Remove orphaned registry entries.
 .TP
 .B stats
@@ -41,8 +41,8 @@ Check tool availability (git, python3, npm, go, cargo, make).
 .B config [key] [value]
 View or set configuration values.
 .TP
-.B search <query>
-Search GitHub repositories.
+.B search <query> [--forge <name>]
+Search repositories (github|gitlab|codeberg).
 .TP
 .B export <file>
 Export registry to a JSON file.
@@ -86,6 +86,12 @@ Output in JSON format.
 .TP
 .B --no-color
 Disable colored output.
+.TP
+.B --timeout <secs>
+Timeout for git clone in seconds.
+.TP
+.B --retries <n>
+Number of retries for failed git clone.
 .SH FILES
 .TP
 .B ~/.pluck-registry.json
