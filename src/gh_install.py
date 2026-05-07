@@ -343,7 +343,9 @@ def print_error(text):
 
 def _detect_host_type(host):
     """Identify the forge type from a git hosting domain."""
-    host_lower = host.lower().removeprefix("www.")
+    host_lower = host.lower()
+    if host_lower.startswith("www."):
+        host_lower = host_lower[4:]
     forge_map = {
         "github.com": "github",
         "gitlab.com": "gitlab",
