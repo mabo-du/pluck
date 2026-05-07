@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: MIT
+# GitLab CI for pluck
+# Runs tests on push/merge requests, publishes to PyPI on tags.
+
+default:
+  image: python:3.12-slim
+
+# ── Cache pip between runs ──
+cache:
+  paths:
+    - .pip-cache/
+
+before_script:
+  - pip install --upgrade pip --quiet
+  - apt-get update -qq && apt-get install -y -qq git make 2>/dev/null || true
+
+# ── Test matrix ──
+.test-base: &test-base
+  stage: test
+  script:
+    - pip install pytest pytest-cov
+    - python -m pytest tests/ -v --cov=gh_install --cov-report=term
+  parallel:
+    matrix:
+      - IMAGE: ["python:3.8-slim", "python:3.9-slim", "python:3.10-slim",
+               "python:3.11-slim", "python:3.12-slim", "python:3.13-slim"]
+
+test:
+  <<: *test-base
+  image: $IMAGE
+
+# ── Lint ──
+lint:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install ruff
+    - ruff check src/ tests/
+
+# ── Build package ──
+build:
+  stage: build
+  image: python:3.12-slim
+  script:
+    - pip install build
+    - python -m build
+  artifacts:
+    paths:
+      - dist/
+  only:
+    - tags
+    - main
+
+# ── Publish to PyPI (tags only) ──
+publish-pypi:
+  stage: deploy
+  image: python:3.12-slim
+  script:
+    - pip install twine
+    - twine upload dist/*
+  only:
+    - tags
+  needs:
+    - build
+  variables:
+    TWINE_USERNAME: __token__
+    TWINE_PASSWORD: $PYPI_API_TOKEN  # Set in GitLab → Settings → CI/CD → Variables
+
+# ── Stages ──
+stages:
+  - test
+  - build
+  - deploy

@@ -234,14 +234,57 @@ Available environment variables:
 - `$PLUCK_PATH` — Installation path
 - `$PLUCK_METHOD` — Install method used
 
+## 🖱️ Browser Integration
+
+Pluck includes a **right-click context menu** integration. Install a repo from any
+forge without leaving your browser.
+
+### Quick Setup
+
+```bash
+# 1. Register the pluck:// protocol handler on your OS
+bash scripts/install-protocol-handler.sh
+
+# 2. Load the browser extension (Chrome/Chromium/Brave/Edge)
+#    Open chrome://extensions → Developer mode → Load unpacked
+#    Select assets/browser-extension/
+
+# 3. Right-click any git repo link → "Install with pluck"
+```
+
+Works with GitHub, GitLab, Codeberg, Bitbucket, SourceHut — any forge.
+
+### No Extension? Use the Bookmarklet
+
+If you prefer not to install an extension, create a bookmark with this URL:
+
+```
+javascript:location.href='pluck://install?url='+encodeURIComponent(location.href)
+```
+
+When you're on a git repo page, click the bookmark to install it.
+
+### How It Works
+
+The protocol handler is a small shell script (`scripts/pluck-protocol-handler.sh`)
+that receives `pluck://install?url=...` calls from the browser, decodes the URL,
+and runs `pluck install <url>`. The browser extension adds the right-click menu
+item that triggers this protocol call.
+
 ## 📁 Project Structure
 
 ```
 pluck/
 ├── src/
-│   └── gh_install.py          # Main application (~1500 lines)
+│   └── gh_install.py          # Main application (~1700 lines)
 ├── tests/
-│   └── test_gh_install.py     # Test suite (108 tests)
+│   └── test_gh_install.py     # Test suite (111 tests)
+├── assets/
+│   ├── images/                # Logo and illustrations
+│   └── browser-extension/     # Chrome/Chromium right-click extension
+├── scripts/
+│   ├── pluck-protocol-handler.sh    # pluck:// URL handler
+│   └── install-protocol-handler.sh  # Protocol registration
 ├── docs/
 │   └── IMPLEMENTATION.md      # Implementation details
 ├── man/
