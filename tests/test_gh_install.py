@@ -19,6 +19,7 @@ from gh_install import (
     _is_executable,
     _parse_args,
     _parse_gist_url,
+    _parse_snippet_url,
     _sanitize_repo_name,
     config_command,
     detect_install_method,
@@ -237,6 +238,33 @@ class TestGistUrl:
         assert result is not None
         assert result["url"] == "https://gist.github.com/test/abcd1234.git"
         assert result.get("is_gist") is True
+
+    # ── GitLab snippets ──
+
+    def test_gitlab_personal_snippet(self):
+        result = parse_repo_url("https://gitlab.com/-/snippets/1234567")
+        assert result is not None
+        assert result["host"] == "gitlab.com"
+        assert result["host_type"] == "gitlab"
+        assert result["repo"] == "snippet-1234567"
+        assert result["url"] == "https://gitlab.com/-/snippets/1234567.git"
+        assert result.get("is_gist") is True
+
+    def test_gitlab_project_snippet(self):
+        result = parse_repo_url("https://gitlab.com/my-org/my-project/-/snippets/7654321")
+        assert result is not None
+        assert result["host"] == "gitlab.com"
+        assert result["host_type"] == "gitlab"
+        assert result["owner"] == "my-org/my-project"
+        assert result["repo"] == "snippet-7654321"
+        assert result["url"] == "https://gitlab.com/my-org/my-project/-/snippets/7654321.git"
+        assert result.get("is_gist") is True
+
+    def test_gitlab_snippet_direct(self):
+        result = _parse_snippet_url("https://gitlab.com/-/snippets/98765")
+        assert result is not None
+        assert result["url"] == "https://gitlab.com/-/snippets/98765.git"
+        assert result["host_type"] == "gitlab"
 
 
 class TestDetectInstallMethod:

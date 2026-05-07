@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -40,6 +41,12 @@ SHARED_PATHS = {
 }
 VALID_METHODS = {"script", "binary", "python", "node", "go", "rust", "make", "download"}
 GIST_PATTERN = r"gist\.github\.com[:/]([^/]+)/([a-f0-9]+)"
+# GitLab personal snippet: gitlab.com/-/snippets/12345
+# GitLab project snippet: gitlab.com/owner/repo/-/snippets/12345
+SNIPPET_PATTERNS = [
+    r"gitlab\.com/-/snippets/(\d+)",
+    r"gitlab\.com/([^/]+)/([^/]+)/-/snippets/(\d+)",
+]
 
 # Color auto-detection
 _COLORS_ENABLED = sys.stdout.isatty()
@@ -81,7 +88,7 @@ def print_usage():
         ("stats", "Show installation statistics"),
         ("doctor", "Check tool availability"),
         ("config [key] [value]", "View/set config"),
-        ("search <query>", "Search GitHub repos (other forges coming)"),
+        ("search <query> [--forge <name>]", "Search repos (github|gitlab|codeberg)"),
         ("export <file>", "Export registry"),
         ("import <file>", "Import registry"),
         ("completion <shell>", "Generate shell completion"),
@@ -116,8 +123,15 @@ def print_usage():
         print(f"  {opt:<{max_opt}}  {desc}")
 
 
-def _parse_gist_url(url):
-    """Extract gist info from a gist URL (currently GitHub Gists only)."""
+def _parse_snippet_url(url):
+    """Extract snippet/gist info from gist or code snippet URLs.
+
+    Supports:
+    - GitHub Gists: gist.github.com/user/id
+    - GitLab personal snippets: gitlab.com/-/snippets/id
+    - GitLab project snippets: gitlab.com/owner/repo/-/snippets/id
+    """
+    # GitHub Gist
     match = re.search(GIST_PATTERN, url)
     if match:
         return {
@@ -128,7 +142,40 @@ def _parse_gist_url(url):
             "url": f"https://gist.github.com/{match.group(1)}/{match.group(2)}.git",
             "is_gist": True,
         }
+
+    # GitLab personal snippet
+    match = re.search(SNIPPET_PATTERNS[0], url)
+    if match:
+        snippet_id = match.group(1)
+        return {
+            "host": "gitlab.com",
+            "host_type": "gitlab",
+            "owner": "-",
+            "repo": f"snippet-{snippet_id}",
+            "url": f"https://gitlab.com/-/snippets/{snippet_id}.git",
+            "is_gist": True,
+        }
+
+    # GitLab project snippet
+    match = re.search(SNIPPET_PATTERNS[1], url)
+    if match:
+        owner = match.group(1)
+        project = match.group(2)
+        snippet_id = match.group(3)
+        return {
+            "host": "gitlab.com",
+            "host_type": "gitlab",
+            "owner": f"{owner}/{project}",
+            "repo": f"snippet-{snippet_id}",
+            "url": f"https://gitlab.com/{owner}/{project}/-/snippets/{snippet_id}.git",
+            "is_gist": True,
+        }
+
     return None
+
+
+# Backward compat alias
+_parse_gist_url = _parse_snippet_url
 
 
 def _completion_script(shell):
@@ -318,7 +365,7 @@ def parse_repo_url(url):
     self-hosted instances, and any other standard git hosting.
     """
     # Try gist detection first
-    gist_info = _parse_gist_url(url)
+    gist_info = _parse_snippet_url(url)
     if gist_info:
         return gist_info
 
@@ -881,9 +928,112 @@ def config_command(key=None, value=None):
     print_success(f"Set {key} = {value}")
 
 
+def _search_print_result(index, name, desc, stars, lang, url, star_char="★"):
+    """Print a formatted search result."""
+    print(f"  {index}. {Colors.GREEN}{name}{Colors.END}")
+    print(f"     {desc}")
+    print(f"     {Colors.CYAN}{star_char}{Colors.END} {stars:,}  |  Language: {lang}")
+    print(f"     URL: {url}")
+    print()
+
+
 def search_github(query, limit=10):
-    """Search repositories using the GitHub API (GitHub-only; other forges coming)."""
+    """Search repositories using the GitHub API."""
     print(f"  Searching GitHub for '{query}'...")
+    url = f"https://api.github.com/search/repositories?q={urllib.parse.quote(query)}&sort=stars&order=desc&per_page={limit}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception as e:
+        print_error(f"Search failed: {e}")
+        return
+
+    items = data.get("items", [])
+    if not items:
+        print_warning("No results found")
+        return
+
+    print_header(f"GitHub Results — '{query}' ({len(items)} found)")
+    for i, repo in enumerate(items, 1):
+        _search_print_result(
+            i,
+            repo["full_name"],
+            repo.get("description") or "No description",
+            repo["stargazers_count"],
+            repo.get("language") or "Unknown",
+            repo["html_url"],
+        )
+
+
+def search_gitlab(query, limit=10):
+    """Search repositories using the GitLab API."""
+    print(f"  Searching GitLab for '{query}'...")
+    url = f"https://gitlab.com/api/v4/projects?search={urllib.parse.quote(query)}&per_page={limit}&order_by=stars&sort=desc"
+    # Note: GitLab search is unauthenticated but rate-limited (600 req/h per IP)
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception as e:
+        print_error(f"Search failed: {e}")
+        return
+
+    if not data:
+        print_warning("No results found")
+        return
+
+    results = []
+    for project in data:
+        # GitLab returns projects ordered by last_activity by default;
+        # sort with our own star sort since we requested order_by=stars
+        results.append({
+            "name": project.get("path_with_namespace", project["path"]),
+            "description": project.get("description") or "No description",
+            "stars": project.get("star_count", 0),
+            "language": project.get("programming_language") or project.get("language") or "Unknown",
+            "url": project.get("web_url", project.get("http_url_to_repo", "")),
+        })
+
+    results.sort(key=lambda r: r["stars"], reverse=True)
+
+    print_header(f"GitLab Results — '{query}' ({len(results)} found)")
+    for i, r in enumerate(results[:limit], 1):
+        _search_print_result(i, r["name"], r["description"], r["stars"], r["language"], r["url"], star_char="\u2605")
+
+
+def search_codeberg(query, limit=10):
+    """Search repositories using the Codeberg (Gitea/Forgejo) API."""
+    print(f"  Searching Codeberg for '{query}'...")
+    url = f"https://codeberg.org/api/v1/repos/search?q={urllib.parse.quote(query)}&limit={limit}&sort=stars"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception as e:
+        print_error(f"Search failed: {e}")
+        return
+
+    items = data.get("data", []) if isinstance(data, dict) else data
+    if not items or (isinstance(data, dict) and data.get("ok") is False):
+        print_warning("No results found")
+        return
+
+    ok_flag = data.get("ok", True) if isinstance(data, dict) else True
+    if not ok_flag or not items:
+        print_warning("No results found")
+        return
+
+    print_header(f"Codeberg Results — '{query}' ({len(items)} found)")
+    for i, repo in enumerate(items, 1):
+        _search_print_result(
+            i,
+            repo.get("full_name", "unknown"),
+            repo.get("description") or "No description",
+            repo.get("stars_count", 0),
+            repo.get("language") or "Unknown",
+            repo.get("html_url", ""),
+        )
 
     url = f"https://api.github.com/search/repositories?q={urllib.parse.quote(query)}&sort=stars&order=desc&per_page={limit}"
     try:
@@ -1470,11 +1620,33 @@ def main():
         config_command(key, value)
 
     elif command == "search":
-        if len(sys.argv) < 3:
+        args = sys.argv[2:]
+        if not args:
             print_error("Please provide a search query")
             sys.exit(1)
-        query = " ".join(sys.argv[2:])
-        search_github(query)
+
+        forge = "github"
+        if "--forge" in args:
+            idx = args.index("--forge")
+            if idx + 1 < len(args):
+                forge = args[idx + 1].lower()
+                args = args[:idx] + args[idx + 2:]
+            else:
+                print_error("Missing forge name after --forge (try: github, gitlab, codeberg)")
+                sys.exit(1)
+
+        query = " ".join(args)
+        forge_searchers = {
+            "github": search_github,
+            "gitlab": search_gitlab,
+            "codeberg": search_codeberg,
+        }
+        searcher = forge_searchers.get(forge)
+        if searcher:
+            searcher(query)
+        else:
+            print_error(f"Unknown forge: {forge}. Supported: {', '.join(sorted(forge_searchers))}")
+            sys.exit(1)
 
     elif command == "export":
         if len(sys.argv) < 3:

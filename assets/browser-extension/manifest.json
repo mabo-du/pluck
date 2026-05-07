@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "pluck — Install from any git forge",
+  "version": "1.0",
+  "description": "Right-click any git repo link and install it with pluck.",
+  "permissions": ["contextMenus"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "128": "icon.png"
+  }
+}

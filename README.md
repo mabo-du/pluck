@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white" alt="Python 3.8+">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT">
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen" alt="Zero dependencies">
-  <img src="https://img.shields.io/badge/Tests-108%20passing-brightgreen" alt="108 passing tests">
+  <img src="https://img.shields.io/badge/Tests-111%20passing-brightgreen" alt="111 passing tests">
   <img src="https://img.shields.io/badge/Forges-11%20supported-blue" alt="11 forges supported">
   <img src="https://img.shields.io/badge/Code%20style-ruff-EF5552" alt="Code style: ruff">
 </p>
@@ -97,7 +97,8 @@ pluck install https://bitbucket.org/owner/repo
 - ✅ **Verify** — Check installed apps integrity
 - 🧹 **Clean** — Remove orphaned registry entries
 - 📊 **Stats** — Installation statistics and method breakdown
-- 🔍 **Search** — Search GitHub repositories via API (other forges coming)
+- 🌐 **Multi-forge search** — Search GitHub, GitLab, or Codeberg with `--forge`
+- 🖱️ **Browser right-click** — Optional extension + protocol handler to install from any page
 - 📤 **Export/Import** — Migrate registry between machines
 
 ### Configuration
@@ -171,9 +172,9 @@ Any git hosting platform that follows the standard `host/owner/repo` URL pattern
 ### From Source
 
 ```bash
-# Clone the repository (repo name pending rename)
-git clone https://gitlab.com/mabodu/gh-install.git
-cd gh-install
+# Clone the repository
+git clone https://gitlab.com/mabodu/pluck.git
+cd pluck
 
 # Install via pip
 pip install -e .
@@ -281,9 +282,9 @@ pre-commit install
 ### Test Coverage
 
 ```
-108 tests passing across 23 test classes:
+111 tests passing across 24 test classes:
 ├── TestParseRepoUrl (22 tests)
-├── TestGistUrl (4 tests)
+├── TestGistUrl (7 tests) — includes GitLab snippets
 ├── TestDetectInstallMethod (17 tests)
 ├── TestSharedPaths (2 tests)
 ├── TestValidMethods (2 tests)
