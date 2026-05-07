@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/Forges-11%20supported-blue" alt="11 forges supported">
   <img src="https://img.shields.io/badge/PyPI-pluck--cli-blue?logo=pypi" alt="PyPI: pluck-cli">
   <img src="https://img.shields.io/badge/Code%20style-ruff-EF5552" alt="Code style: ruff">
+  <img src="https://gitlab.com/mabodu/pluck/badges/main/pipeline.svg" alt="GitLab CI">
 </p>
 
 ---
@@ -114,6 +115,10 @@ pluck install https://bitbucket.org/owner/repo
 
 ## 🌐 Supported Forges
 
+<p align="center">
+  <img src="assets/images/pluck_front_baubles.png" alt="All the forges" width="500"/>
+</p>
+
 | Forge | Host | Built-in | Notes |
 |-------|------|----------|-------|
 | **GitHub** | `github.com` | ✅ | Full support including gists |
@@ -145,7 +150,7 @@ Any git hosting platform that follows the standard `host/owner/repo` URL pattern
 | `stats` | Show statistics | `pluck stats` |
 | `doctor` | Check tool availability | `pluck doctor` |
 | `config [key] [val]` | View/set config | `pluck config install_dir ~/Apps` |
-| `search <query>` | Search GitHub repos (other forges coming) | `pluck search python installer` |
+| `search <query> [--forge <name>]` | Search repos (github|gitlab|codeberg) | `pluck search python installer --forge gitlab` |
 | `export <file>` | Export registry | `pluck export ~/backup.json` |
 | `import <file>` | Import registry | `pluck import ~/backup.json` |
 | `completion <shell>` | Generate shell completion | `pluck completion bash` |
@@ -233,6 +238,10 @@ Available environment variables:
 - `$PLUCK_METHOD` — Install method used
 
 ## 🖱️ Browser Integration
+
+<p align="center">
+  <img src="assets/images/pluck_stalking2.png" alt="pluck stalking repos in your browser" width="500"/>
+</p>
 
 Pluck includes a **right-click context menu** integration. Install a repo from any
 forge without leaving your browser.

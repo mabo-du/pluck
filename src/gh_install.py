@@ -1122,7 +1122,7 @@ def register_app(repo_name, repo_url, install_path, install_method, skip_hook=Fa
 
 def _run_post_install_hook(repo_name, install_path, method):
     """Run user-defined post-install hook if configured."""
-    hook_dir = CONFIG_FILE.parent / "pluck" / "hooks"
+    hook_dir = CONFIG_FILE.parent / "hooks"
     hook_file = hook_dir / "post-install.sh"
 
     if hook_file.exists():
