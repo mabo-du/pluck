@@ -1,25 +1,20 @@
 <p align="center">
-  <h1 align="center">🪶 pluck</h1>
-  <p align="center"><strong>Paste any git repo URL → Auto-install → Done!</strong></p>
+  <img src="assets/images/pluck_logo.png" alt="pluck" width="400"/>
+  <br>
+  <strong>Pluck git repos from any forge — auto-detect, auto-install, done!</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/mark/pluck/actions/workflows/ci.yml"><img src="https://github.com/mark/pluck/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/mark/pluck/actions/workflows/publish-pypi.yml"><img src="https://github.com/mark/pluck/actions/workflows/publish-pypi.yml/badge.svg" alt="Publish"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white" alt="Python 3.8+"></a>
-  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/badge/Code%20style-ruff-EF5552" alt="Code style: ruff"></a>
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-333?logo=linux" alt="Platform: Linux | macOS">
+  <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white" alt="Python 3.8+">
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT">
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen" alt="Zero dependencies">
   <img src="https://img.shields.io/badge/Tests-108%20passing-brightgreen" alt="108 passing tests">
-  <img src="https://img.shields.io/badge/Commands-17-blue" alt="17 commands">
-  <img src="https://img.shields.io/badge/Flags-11-purple" alt="11 flags">
+  <img src="https://img.shields.io/badge/Forges-11%20supported-blue" alt="11 forges supported">
+  <img src="https://img.shields.io/badge/Code%20style-ruff-EF5552" alt="Code style: ruff">
 </p>
 
 ---
-
-A CLI tool that simplifies installing repositories from any git hosting platform — GitHub, GitLab, Codeberg, Bitbucket, SourceHut, Gitea, Gogs, Pagure, Forgejo, self-hosted, or any other git forge. Just paste a URL and pluck detects the project type and installs it.
-
-## 📋 Table of Contents
 
 - [Quick Start](#-quick-start)
 - [How It Works](#-how-it-works)
@@ -30,20 +25,28 @@ A CLI tool that simplifies installing repositories from any git hosting platform
 - [Configuration](#-configuration)
 - [Project Structure](#-project-structure)
 - [Development](#-development)
-- [Why This Exists](#-why-this-exists)
 
 ## 🚀 Quick Start
 
+<p align="center">
+  <img src="assets/images/pluck_chasing.png" alt="pluck chasing repos" width="600"/>
+</p>
+
 ```bash
-# Install from any git hosting platform
+# Install from any git forge — one command, zero fuss
 pluck install https://github.com/user/repo
 pluck install https://gitlab.com/user/project
 pluck install https://codeberg.org/user/repo
+pluck install https://bitbucket.org/owner/repo
 
-# That's it. The tool detects the project type and installs it.
+# That's it. Pluck detects the project type and installs it.
 ```
 
 ## 🔄 How It Works
+
+<p align="center">
+  <img src="assets/images/pluck_stalking.png" alt="pluck stalking a repo" width="600"/>
+</p>
 
 ```
 ┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
@@ -107,6 +110,24 @@ pluck install https://codeberg.org/user/repo
 - 📖 **Man page** — `man pluck` for offline docs
 - 🔧 **Post-install hooks** — Custom scripts after each install
 
+## 🌐 Supported Forges
+
+| Forge | Host | Built-in | Notes |
+|-------|------|----------|-------|
+| **GitHub** | `github.com` | ✅ | Full support including gists |
+| **GitLab** | `gitlab.com` | ✅ | HTTPS & SSH, self-hosted instances auto-detected |
+| **Codeberg** | `codeberg.org` | ✅ | Powered by Forgejo |
+| **Bitbucket** | `bitbucket.org` | ✅ | Both cloud & self-hosted |
+| **SourceHut** | `git.sr.ht` | ✅ | Supports `~user` prefix |
+| **Gitea** | `gitea.com` | ✅ | Any Gitea instance works |
+| **Gogs** | `gogs.io` | ✅ | Lightweight git service |
+| **Pagure** | `pagure.io` | ✅ | Fedora's git hosting |
+| **Forgejo** | `forgejo.org` | ✅ | Self-hosted friendly |
+| **Any other hosted git** | Any domain | ✅ | Parses as `generic` type |
+| **Self-hosted** | Any IP/domain | ✅ | SSH & HTTPS both supported |
+
+Any git hosting platform that follows the standard `host/owner/repo` URL pattern works — no plugin or config needed.
+
 ## 📖 Commands
 
 | Command | Description | Example |
@@ -150,7 +171,7 @@ pluck install https://codeberg.org/user/repo
 ### From Source
 
 ```bash
-# Clone the repository
+# Clone the repository (repo name pending rename)
 git clone https://gitlab.com/mabodu/gh-install.git
 cd gh-install
 
@@ -158,7 +179,7 @@ cd gh-install
 pip install -e .
 
 # Or run directly
-./src/gh_install.py install https://github.com/user/repo
+./src/gh_install.py install https://gitlab.com/user/project
 ```
 
 ### Via pip (not yet on PyPI)
@@ -208,9 +229,9 @@ pluck config method_priority '["python","node","binary","download"]'
 Create `~/.config/pluck/hooks/post-install.sh` to run custom scripts after each install.
 
 Available environment variables:
-- `$GH_INSTALL_APP` — Repository name
-- `$GH_INSTALL_PATH` — Installation path
-- `$GH_INSTALL_METHOD` — Install method used
+- `$PLUCK_APP` — Repository name
+- `$PLUCK_PATH` — Installation path
+- `$PLUCK_METHOD` — Install method used
 
 ## 📁 Project Structure
 

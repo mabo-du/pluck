@@ -975,6 +975,10 @@ def _run_post_install_hook(repo_name, install_path, method):
 
     if hook_file.exists():
         env = os.environ.copy()
+        env["PLUCK_APP"] = repo_name
+        env["PLUCK_PATH"] = install_path
+        env["PLUCK_METHOD"] = method
+        # Legacy aliases — remove in a future release
         env["GH_INSTALL_APP"] = repo_name
         env["GH_INSTALL_PATH"] = install_path
         env["GH_INSTALL_METHOD"] = method
