@@ -433,7 +433,7 @@ class TestParseArgs:
     def test_urls_only(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args(["https://github.com/a/b"])
         assert install_dir is None
         assert dry_run is False
@@ -446,7 +446,7 @@ class TestParseArgs:
     def test_dir_flag(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args(["--dir", "/tmp/test", "https://github.com/a/b"])
         assert install_dir == Path("/tmp/test")
         assert urls == ["https://github.com/a/b"]
@@ -454,49 +454,49 @@ class TestParseArgs:
     def test_dry_run_flag(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args(["--dry-run", "https://github.com/a/b"])
         assert dry_run is True
 
     def test_force_flag(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args(["--force", "https://github.com/a/b"])
         assert force is True
 
     def test_yes_flag(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args(["--yes", "https://github.com/a/b"])
         assert force is True
 
     def test_shallow_flag(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args(["--shallow", "https://github.com/a/b"])
         assert shallow is True
 
     def test_ref_flag(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args(["--ref", "v2.0", "https://github.com/a/b"])
         assert ref == "v2.0"
 
     def test_method_flag(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args(["--method", "python", "https://github.com/a/b"])
         assert method == "python"
 
     def test_combined_flags(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args([
             "--dir", "/custom", "--dry-run", "--shallow",
             "--ref", "main", "--method", "python",
@@ -511,7 +511,7 @@ class TestParseArgs:
     def test_flags_between_urls(self):
         (
             install_dir, dry_run, force, shallow, ref,
-            method, json_output, timeout, retries, urls,
+            method, json_output, verbose, no_color, timeout, retries, urls,
         ) = _parse_args([
             "https://github.com/a/b", "--dir", "/opt", "https://github.com/c/d",
         ])

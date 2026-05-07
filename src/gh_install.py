@@ -632,6 +632,7 @@ def download_and_install(
     shallow=False,
     ref=None,
     method_override=None,
+    verbose=False,
     timeout=None,
     retries=0,
 ):
@@ -689,7 +690,9 @@ def download_and_install(
             print("  Downloading...")
 
         try:
-            subprocess.run(clone_cmd, check=True, timeout=timeout)
+            subprocess.run(clone_cmd, check=True, timeout=timeout,
+                           stdout=None if verbose else subprocess.DEVNULL,
+                           stderr=None if verbose else subprocess.DEVNULL)
             break
         except subprocess.TimeoutExpired:
             print_error(f"Clone timed out after {timeout}s")
@@ -1037,31 +1040,31 @@ def search_codeberg(query, limit=10):
             repo.get("html_url", ""),
         )
 
-    url = f"https://api.github.com/search/repositories?q={urllib.parse.quote(query)}&sort=stars&order=desc&per_page={limit}"
+
+def search_bitbucket(query, limit=10):
+    """Search repositories using the Bitbucket Cloud API."""
+    print(f"  Searching Bitbucket for '{query}'...")
+    url = f"https://api.bitbucket.org/2.0/repositories?q=name~\"{urllib.parse.quote(query)}\"&sort=-updated_on"
     try:
-        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())
     except Exception as e:
         print_error(f"Search failed: {e}")
         return
 
-    items = data.get("items", [])
+    items = data.get("values", [])
     if not items:
         print_warning("No results found")
         return
 
-    print_header(f"Search Results for '{query}' ({len(items)} found)")
+    print_header(f"Bitbucket Results — '{query}' ({len(items)} found)")
     for i, repo in enumerate(items, 1):
-        name = repo["full_name"]
-        stars = repo["stargazers_count"]
+        full_name = repo.get("full_name", "unknown")
         desc = repo.get("description") or "No description"
         lang = repo.get("language") or "Unknown"
-        print(f"  {i}. {Colors.GREEN}{name}{Colors.END}")
-        print(f"     {desc}")
-        print(f"     {Colors.CYAN}★{Colors.END} {stars:,}  |  Language: {lang}")
-        print(f"     URL: {repo['html_url']}")
-        print()
+        url = repo.get("links", {}).get("html", {}).get("href", "")
+        _search_print_result(i, full_name, desc, 0, lang, url, star_char="\u2022")
 
 
 def export_registry(filepath):
@@ -1296,6 +1299,7 @@ def _parse_args(args):
     method = None
     json_output = False
     no_color = False
+    verbose = False
     timeout = None
     retries = 0
     urls = []
@@ -1326,6 +1330,9 @@ def _parse_args(args):
         elif args[i] == "--json":
             json_output = True
             i += 1
+        elif args[i] == "--verbose":
+            verbose = True
+            i += 1
         elif args[i] == "--no-color":
             no_color = True
             i += 1
@@ -1350,7 +1357,7 @@ def _parse_args(args):
     if no_color:
         _enable_colors(False)
 
-    return install_dir, dry_run, force, shallow, ref, method, json_output, timeout, retries, urls
+    return install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, urls
 
 
 def verify_apps(json_output=False):
@@ -1525,7 +1532,7 @@ def main():
     command = sys.argv[1]
 
     if command == "install":
-        install_dir, dry_run, force, shallow, ref, method, json_output, timeout, retries, urls = (
+        install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, urls = (
             _parse_args(sys.argv[2:])
         )
 
@@ -1549,12 +1556,13 @@ def main():
                 shallow=shallow,
                 ref=ref,
                 method_override=method,
+                verbose=verbose,
                 timeout=timeout,
                 retries=retries,
             )
 
     elif command == "update":
-        install_dir, dry_run, force, shallow, ref, method, json_output, timeout, retries, rest = (
+        install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, rest = (
             _parse_args(sys.argv[2:])
         )
         if not rest:
@@ -1588,7 +1596,7 @@ def main():
         list_installed(json_output=json_output)
 
     elif command in ("uninstall", "remove"):
-        install_dir, dry_run, force, shallow, ref, method, json_output, timeout, retries, rest = (
+        install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, rest = (
             _parse_args(sys.argv[2:])
         )
         if not rest:
@@ -1603,7 +1611,7 @@ def main():
         verify_apps(json_output=json_output)
 
     elif command == "clean":
-        install_dir, dry_run, force, shallow, ref, method, json_output, timeout, retries, rest = (
+        install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, rest = (
             _parse_args(sys.argv[2:])
         )
         clean_registry(dry_run=dry_run, force=force, json_output=json_output)
@@ -1642,6 +1650,7 @@ def main():
             "github": search_github,
             "gitlab": search_gitlab,
             "codeberg": search_codeberg,
+            "bitbucket": search_bitbucket,
         }
         searcher = forge_searchers.get(forge)
         if searcher:
