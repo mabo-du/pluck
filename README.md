@@ -150,7 +150,7 @@ Any git hosting platform that follows the standard `host/owner/repo` URL pattern
 | `stats` | Show statistics | `pluck stats` |
 | `doctor` | Check tool availability | `pluck doctor` |
 | `config [key] [val]` | View/set config | `pluck config install_dir ~/Apps` |
-| `search <query> [--forge <name>]` | Search repos (github|gitlab|codeberg) | `pluck search python installer --forge gitlab` |
+| `search <query> [--forge <name>]` | Search repos (github\|gitlab\|codeberg\|bitbucket) | `pluck search python installer --forge gitlab` |
 | `export <file>` | Export registry | `pluck export ~/backup.json` |
 | `import <file>` | Import registry | `pluck import ~/backup.json` |
 | `completion <shell>` | Generate shell completion | `pluck completion bash` |
@@ -172,6 +172,7 @@ Any git hosting platform that follows the standard `host/owner/repo` URL pattern
 | `--no-color` | Disable colored output |
 | `--timeout <secs>` | Timeout for git clone in seconds |
 | `--retries <n>` | Number of retries for failed git clone |
+| `--verbose` | Show detailed git clone output |
 
 ## 📥 Installation
 

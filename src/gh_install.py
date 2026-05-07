@@ -88,7 +88,7 @@ def print_usage():
         ("stats", "Show installation statistics"),
         ("doctor", "Check tool availability"),
         ("config [key] [value]", "View/set config"),
-        ("search <query> [--forge <name>]", "Search repos (github|gitlab|codeberg)"),
+        ("search <query> [--forge <name>]", "Search repos (github|gitlab|codeberg|bitbucket)"),
         ("export <file>", "Export registry"),
         ("import <file>", "Import registry"),
         ("completion <shell>", "Generate shell completion"),
@@ -107,6 +107,7 @@ def print_usage():
         ("--no-color", "Disable colored output"),
         ("--timeout <secs>", "Timeout for git clone in seconds"),
         ("--retries <n>", "Number of retries for failed git clone"),
+        ("--verbose", "Show detailed git clone output"),
     ]
 
     print("Usage:")
