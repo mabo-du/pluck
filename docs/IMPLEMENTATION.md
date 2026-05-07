@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-`gh-install` is a single-file Python 3 CLI application (~1350 lines) with zero external dependencies. It provides a simple interface for installing GitHub repositories and gists by auto-detecting project type and applying the appropriate installation strategy.
+`pluck` is a single-file Python 3 CLI application (~1500 lines) with zero external dependencies. It provides a simple interface for installing repositories from any git hosting platform (GitHub, GitLab, Codeberg, Bitbucket, SourceHut, etc.) by auto-detecting project type and applying the appropriate installation strategy.
 
 ### Entry Point
 
@@ -17,7 +17,7 @@ Executed via `python src/gh_install.py <command> [args]` or `gh-install` after p
 | Group | Functions | Purpose |
 |-------|-----------|---------|
 | **CLI** | `main()`, `print_usage()` | Command routing for 17 commands |
-| **URL Parsing** | `parse_github_url()`, `_parse_gist_url()` | Extract owner/repo from GitHub URLs and gist URLs |
+| **URL Parsing** | `parse_repo_url()`, `_parse_gist_url()`, `_detect_host_type()` | Extract owner/repo from any git repo URL; detect forge type |
 | **Detection** | `detect_install_method()` | Scans repo for project files with configurable method priority |
 | **Installers** | `install_script()`, `install_python()`, `install_node()`, `install_go()`, `install_rust()`, `install_binary()`, `install_make()` | Project-type-specific installation logic |
 | **Orchestration** | `download_and_install()` | Clones to temp (with shallow/ref support), detects method, dispatches installer, registers, cleans up, shows summary |
@@ -34,11 +34,11 @@ Executed via `python src/gh_install.py <command> [args]` or `gh-install` after p
 
 ```
 User input (URL)
-  → parse_github_url() (supports gists)
+  → parse_repo_url() (detects forge type, supports gists)
   → git clone (temp dir, optional --depth 1, optional --branch)
   → detect_install_method() (respects method_priority config)
   → dispatch to appropriate install_*()
-  → register_app() → ~/.gh-install-registry.json
+  → register_app() → ~/.pluck-registry.json
   → post-install summary (name, method, location, size)
   → cleanup temp dir
 ```
@@ -97,7 +97,7 @@ User input (URL)
 
 ## Registry Schema
 
-**File**: `~/.gh-install-registry.json`
+**File**: `~/.pluck-registry.json`
 
 ```json
 {
@@ -116,7 +116,7 @@ User input (URL)
 
 ## User Config Schema
 
-**File**: `$XDG_CONFIG_HOME/gh-install/config.json` (default: `~/.config/gh-install/config.json`)
+**File**: `$XDG_CONFIG_HOME/pluck/config.json` (default: `~/.config/pluck/config.json`)
 
 ```json
 {
@@ -129,8 +129,8 @@ User input (URL)
 
 **Location**: `tests/test_gh_install.py`
 
-**Coverage**: 92 tests across 20 test classes:
-- `TestParseGithubUrl` (9 tests) — URL parsing for various formats
+**Coverage**: 108 tests across 23 test classes:
+- `TestParseRepoUrl` (22 tests) — URL parsing for GitHub, GitLab, Codeberg, Bitbucket, SourceHut, Gitea, Gogs, Pagure, Forgejo, self-hosted, generic
 - `TestGistUrl` (4 tests) — gist URL parsing
 - `TestDetectInstallMethod` (17 tests) — Project type detection with method priority
 - `TestSharedPaths` (2 tests) — Safety guard validation
@@ -158,7 +158,7 @@ User input (URL)
 
 | Command | Description |
 |---------|-------------|
-| `install <url> [options]` | Install from GitHub URL or gist |
+| `install <url> [options]` | Install from any git repo URL |
 | `update <name> [--force]` | Update an installed app |
 | `info <name>` | Show detailed app info (URL, method, path, size, exists) |
 | `list` | List all installed apps with size and existence check |

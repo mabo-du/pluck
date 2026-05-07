@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Renamed project to pluck** — new CLI command, registry path (`~/.pluck-registry.json`), config path (`~/.config/pluck/`), with automatic migration from old paths
+- **Generalized URL parser** — `parse_repo_url()` now accepts any git hosting URL (GitHub, GitLab, Codeberg, Bitbucket, SourceHut, Gitea, Gogs, Pagure, Forgejo, self-hosted)
+- **Forge-agnostic** — all install methods work with repos from any forge; only the `search` command remains GitHub-only
+
 ### Added
 - `--timeout <secs>` flag — set timeout for git clone operations
 - `--retries <n>` flag — auto-retry failed git clones with 2s backoff

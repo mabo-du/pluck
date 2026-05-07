@@ -129,6 +129,27 @@ class TestParseRepoUrl:
         assert result["repo"] == "repo"
         assert result["host_type"] == "gitea"
 
+    def test_gogs_https(self):
+        result = parse_repo_url("https://gogs.io/user/repo")
+        assert result is not None
+        assert result["owner"] == "user"
+        assert result["repo"] == "repo"
+        assert result["host_type"] == "gogs"
+
+    def test_pagure_https(self):
+        result = parse_repo_url("https://pagure.io/user/repo")
+        assert result is not None
+        assert result["owner"] == "user"
+        assert result["repo"] == "repo"
+        assert result["host_type"] == "pagure"
+
+    def test_forgejo_https(self):
+        result = parse_repo_url("https://forgejo.org/user/repo")
+        assert result is not None
+        assert result["owner"] == "user"
+        assert result["repo"] == "repo"
+        assert result["host_type"] == "forgejo"
+
     def test_self_hosted_generic(self):
         """Self-hosted git instances should parse as 'generic' type."""
         result = parse_repo_url("https://git.example.com/team/project")
@@ -178,6 +199,9 @@ class TestParseRepoUrl:
         assert _detect_host_type("bitbucket.org") == "bitbucket"
         assert _detect_host_type("git.sr.ht") == "sourcehut"
         assert _detect_host_type("gitea.com") == "gitea"
+        assert _detect_host_type("gogs.io") == "gogs"
+        assert _detect_host_type("pagure.io") == "pagure"
+        assert _detect_host_type("forgejo.org") == "forgejo"
 
     def test_detect_host_type_unknown(self):
         assert _detect_host_type("git.example.com") == "generic"

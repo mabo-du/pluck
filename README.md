@@ -1,23 +1,23 @@
 <p align="center">
-  <h1 align="center">📦 GitHub App Installer</h1>
-  <p align="center"><strong>Paste GitHub URL → Auto-install → Done!</strong></p>
+  <h1 align="center">🪶 pluck</h1>
+  <p align="center"><strong>Paste any git repo URL → Auto-install → Done!</strong></p>
 </p>
 
 <p align="center">
-  <a href="https://github.com/mark/gh-install/actions/workflows/ci.yml"><img src="https://github.com/mark/gh-install/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/mark/gh-install/actions/workflows/publish-pypi.yml"><img src="https://github.com/mark/gh-install/actions/workflows/publish-pypi.yml/badge.svg" alt="Publish"></a>
+  <a href="https://github.com/mark/pluck/actions/workflows/ci.yml"><img src="https://github.com/mark/pluck/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/mark/pluck/actions/workflows/publish-pypi.yml"><img src="https://github.com/mark/pluck/actions/workflows/publish-pypi.yml/badge.svg" alt="Publish"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white" alt="Python 3.8+"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/badge/Code%20style-ruff-EF5552" alt="Code style: ruff"></a>
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen" alt="Zero dependencies">
-  <img src="https://img.shields.io/badge/Tests-92%20passing-brightgreen" alt="92 passing tests">
+  <img src="https://img.shields.io/badge/Tests-108%20passing-brightgreen" alt="108 passing tests">
   <img src="https://img.shields.io/badge/Commands-17-blue" alt="17 commands">
   <img src="https://img.shields.io/badge/Flags-11-purple" alt="11 flags">
 </p>
 
 ---
 
-A CLI tool that simplifies installing GitHub repositories and gists for users who lack technical knowledge. The tool automatically detects the project type and installs it appropriately.
+A CLI tool that simplifies installing repositories from any git hosting platform — GitHub, GitLab, Codeberg, Bitbucket, SourceHut, Gitea, Gogs, Pagure, Forgejo, self-hosted, or any other git forge. Just paste a URL and pluck detects the project type and installs it.
 
 ## 📋 Table of Contents
 
@@ -35,8 +35,10 @@ A CLI tool that simplifies installing GitHub repositories and gists for users wh
 ## 🚀 Quick Start
 
 ```bash
-# Install any GitHub repository
-gh-install install https://github.com/user/repo
+# Install from any git hosting platform
+pluck install https://github.com/user/repo
+pluck install https://gitlab.com/user/project
+pluck install https://codeberg.org/user/repo
 
 # That's it. The tool detects the project type and installs it.
 ```
@@ -45,8 +47,8 @@ gh-install install https://github.com/user/repo
 
 ```
 ┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐     ┌──────────────┐
-│   GitHub URL    │────▶│  Clone to    │────▶│  Detect Method  │────▶│  Install     │
-│   or Gist       │     │  Temp Dir    │     │  (Auto-detect)  │     │  (8 methods) │
+│  Any git URL    │────▶│  Clone to    │────▶│  Detect Method  │────▶│  Install     │
+│  (any forge)    │     │  Temp Dir    │     │  (Auto-detect)  │     │  (8 methods) │
 └─────────────────┘     └──────────────┘     └─────────────────┘     └──────────────┘
                                                                          │
 ┌─────────────────┐     ┌──────────────┐                                │
@@ -77,7 +79,7 @@ gh-install install https://github.com/user/repo
 ## ✨ Features
 
 ### Installation
-- 🔗 **GitHub & Gist URLs** — Install from any GitHub repository or gist
+- 🔗 **Any git forge** — Install from GitHub, GitLab, Codeberg, Bitbucket, SourceHut, Gitea, Gogs, Pagure, Forgejo, self-hosted, or any git URL
 - 🔍 **Auto-detection** — Automatically detects project type and install method
 - 📦 **Batch install** — Install multiple repositories in one command
 - ⚡ **Shallow clone** — `--shallow` for faster downloads
@@ -92,7 +94,7 @@ gh-install install https://github.com/user/repo
 - ✅ **Verify** — Check installed apps integrity
 - 🧹 **Clean** — Remove orphaned registry entries
 - 📊 **Stats** — Installation statistics and method breakdown
-- 🔍 **Search** — Search GitHub repositories via API
+- 🔍 **Search** — Search GitHub repositories via API (other forges coming)
 - 📤 **Export/Import** — Migrate registry between machines
 
 ### Configuration
@@ -102,30 +104,30 @@ gh-install install https://github.com/user/repo
 - 🚫 **No colors** — `--no-color` for clean terminal output
 - 🔇 **Non-interactive** — `--yes` for scripting
 - 🐳 **Docker support** — Containerized installation
-- 📖 **Man page** — `man gh-install` for offline docs
+- 📖 **Man page** — `man pluck` for offline docs
 - 🔧 **Post-install hooks** — Custom scripts after each install
 
 ## 📖 Commands
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `install <url>` | Install from GitHub | `gh-install install https://github.com/user/repo` |
-| `update <name>` | Update an installed app | `gh-install update myapp` |
-| `info <name>` | Show app details | `gh-install info myapp` |
-| `list` | List installed apps | `gh-install list` |
-| `uninstall <name>` | Uninstall an app | `gh-install uninstall myapp` |
-| `remove <name>` | Alias for uninstall | `gh-install remove myapp` |
-| `verify` | Check apps validity | `gh-install verify` |
-| `clean` | Remove orphaned entries | `gh-install clean --force` |
-| `stats` | Show statistics | `gh-install stats` |
-| `doctor` | Check tool availability | `gh-install doctor` |
-| `config [key] [val]` | View/set config | `gh-install config install_dir ~/Apps` |
-| `search <query>` | Search GitHub repos | `gh-install search python installer` |
-| `export <file>` | Export registry | `gh-install export ~/backup.json` |
-| `import <file>` | Import registry | `gh-install import ~/backup.json` |
-| `completion <shell>` | Generate shell completion | `gh-install completion bash` |
-| `version` | Show version | `gh-install version` |
-| `help` | Show help | `gh-install help` |
+| `install <url>` | Install from any git repo URL | `pluck install https://gitlab.com/user/project` |
+| `update <name>` | Update an installed app | `pluck update myapp` |
+| `info <name>` | Show app details | `pluck info myapp` |
+| `list` | List installed apps | `pluck list` |
+| `uninstall <name>` | Uninstall an app | `pluck uninstall myapp` |
+| `remove <name>` | Alias for uninstall | `pluck remove myapp` |
+| `verify` | Check apps validity | `pluck verify` |
+| `clean` | Remove orphaned entries | `pluck clean --force` |
+| `stats` | Show statistics | `pluck stats` |
+| `doctor` | Check tool availability | `pluck doctor` |
+| `config [key] [val]` | View/set config | `pluck config install_dir ~/Apps` |
+| `search <query>` | Search GitHub repos (other forges coming) | `pluck search python installer` |
+| `export <file>` | Export registry | `pluck export ~/backup.json` |
+| `import <file>` | Import registry | `pluck import ~/backup.json` |
+| `completion <shell>` | Generate shell completion | `pluck completion bash` |
+| `version` | Show version | `pluck version` |
+| `help` | Show help | `pluck help` |
 
 ## 🏷️ Flags
 
@@ -149,32 +151,30 @@ gh-install install https://github.com/user/repo
 
 ```bash
 # Clone the repository
-git clone https://github.com/mark/gh-install.git
+git clone https://gitlab.com/mabodu/gh-install.git
 cd gh-install
 
-# Make the script executable
-chmod +x src/gh_install.py
+# Install via pip
+pip install -e .
 
-# Optional: add to your PATH
-ln -s $(pwd)/src/gh_install.py /usr/local/bin/gh-install
+# Or run directly
+./src/gh_install.py install https://github.com/user/repo
 ```
 
 ### Via pip (not yet on PyPI)
 
-> **Note**: gh-install is not yet published to PyPI. Track [issue #NNN](https://github.com/mark/gh-install/issues) for the first PyPI release. The Docker image is published to GHCR.
-
-To install from source instead (see [From Source](#from-source)).
-
 ```bash
-# Once published:
-pip install gh-install
+# Once published to PyPI:
+pip install pluck
 ```
+
+> **Note**: pluck is not yet published to PyPI. Install from source above, or use the Docker image.
 
 ### Via Docker
 
 ```bash
-docker build -t gh-install .
-docker run gh-install install https://github.com/user/repo
+docker build -t pluck .
+docker run pluck install https://gitlab.com/user/project
 ```
 
 ## ⚙️ Configuration
@@ -184,8 +184,8 @@ docker run gh-install install https://github.com/user/repo
 | Constant | macOS | Linux | Description |
 |----------|-------|-------|-------------|
 | `DEFAULT_INSTALL_DIR` | `~/Applications` | `~/.local/opt` | Where apps are installed |
-| `APP_REGISTRY_FILE` | `~/.gh-install-registry.json` | `~/.gh-install-registry.json` | App registry |
-| `CONFIG_FILE` | `~/.config/gh-install/config.json` | `~/.config/gh-install/config.json` | User config |
+| `APP_REGISTRY_FILE` | `~/.pluck-registry.json` | `~/.pluck-registry.json` | App registry |
+| `CONFIG_FILE` | `~/.config/pluck/config.json` | `~/.config/pluck/config.json` | User config |
 
 ### User Config File
 
@@ -199,13 +199,13 @@ docker run gh-install install https://github.com/user/repo
 Manage via CLI:
 
 ```bash
-gh-install config install_dir ~/Apps
-gh-install config method_priority '["python","node","binary","download"]'
+pluck config install_dir ~/Apps
+pluck config method_priority '["python","node","binary","download"]'
 ```
 
 ### Post-Install Hooks
 
-Create `~/.config/gh-install/hooks/post-install.sh` to run custom scripts after each install.
+Create `~/.config/pluck/hooks/post-install.sh` to run custom scripts after each install.
 
 Available environment variables:
 - `$GH_INSTALL_APP` — Repository name
@@ -215,15 +215,16 @@ Available environment variables:
 ## 📁 Project Structure
 
 ```
-gh-install/
+pluck/
 ├── src/
-│   └── gh_install.py          # Main application (~1300 lines)
+│   └── gh_install.py          # Main application (~1500 lines)
 ├── tests/
-│   └── test_gh_install.py     # Test suite (73 tests)
+│   └── test_gh_install.py     # Test suite (108 tests)
 ├── docs/
 │   └── IMPLEMENTATION.md      # Implementation details
 ├── man/
-│   └── gh-install.1           # Man page
+│   ├── pluck.1                # Man page
+│   └── gh-install.1           # Legacy man page
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml             # CI: test + lint
@@ -259,8 +260,8 @@ pre-commit install
 ### Test Coverage
 
 ```
-92 tests passing across 20 test classes:
-├── TestParseGithubUrl (9 tests)
+108 tests passing across 23 test classes:
+├── TestParseRepoUrl (22 tests)
 ├── TestGistUrl (4 tests)
 ├── TestDetectInstallMethod (17 tests)
 ├── TestSharedPaths (2 tests)

@@ -1,4 +1,4 @@
-# Makefile for gh-install development and installation
+# Makefile for pluck development and installation
 # SPDX-License-Identifier: MIT
 
 PREFIX ?= /usr/local
@@ -10,22 +10,23 @@ PYTHON ?= python3
 
 all: test lint
 
-# Install gh-install system-wide
+# Install pluck system-wide
 install:
-	@echo "Installing gh-install to $(PREFIX)..."
+	@echo "Installing pluck to $(PREFIX)..."
 	$(PYTHON) -m pip install -e .
 	@echo "Installing man page..."
 	@mkdir -p "$(DOCDIR)"
-	cp man/gh-install.1 "$(DOCDIR)/"
-	@echo "Installed! Run: gh-install help"
+	cp man/pluck.1 "$(DOCDIR)/"
+	@echo "Installed! Run: pluck help"
 	@echo ""
-	@echo "Quick test: gh-install doctor"
+	@echo "Quick test: pluck doctor"
 
-# Uninstall gh-install
+# Uninstall pluck
 uninstall:
-	@echo "Removing gh-install..."
-	-$(PYTHON) -m pip uninstall gh-install -y
-	-rm -f "$(DOCDIR)/gh-install.1"
+	@echo "Removing pluck..."
+	-$(PYTHON) -m pip uninstall pluck -y
+	-rm -f "$(DOCDIR)/pluck.1"
+	rm -f "$(DOCDIR)/gh-install.1"   # legacy
 	@echo "Done."
 
 # Run test suite

@@ -13,5 +13,5 @@ COPY LICENSE /app/
 
 RUN pip install --no-cache-dir -e .
 
-ENTRYPOINT ["gh-install"]
+ENTRYPOINT ["pluck"]
 CMD ["help"]

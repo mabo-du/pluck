@@ -1,11 +1,11 @@
-# Contributing to gh-install
+# Contributing to pluck
 
-Thank you for your interest in contributing! This project helps non-technical users install GitHub repositories with zero friction.
+Thank you for your interest in contributing! This project helps users install software from any git hosting platform with zero friction.
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/gh-install.git`
+2. Clone your fork: `git clone <YOUR_FORK_URL>`
 3. Create a branch: `git checkout -b feature/your-feature-name`
 4. Install dev dependencies: `pip install pytest ruff`
 5. Run tests: `python -m pytest tests/ -v`
@@ -31,7 +31,7 @@ All changes should include tests. The test suite lives in `tests/`:
 python -m pytest tests/ -v
 
 # Run a specific test class
-python -m pytest tests/test_gh_install.py::TestParseGithubUrl -v
+python -m pytest tests/test_gh_install.py::TestParseRepoUrl -v
 
 # Run with coverage
 pip install pytest-cov

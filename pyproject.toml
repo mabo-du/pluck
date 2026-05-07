@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gh-install"
+name = "pluck"
 version = "0.1.0"
-description = "Paste GitHub URL, auto-detect install method, auto-install, done!"
+description = "Pluck any git repo from any forge — auto-detect, auto-install, done!"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.6"
 authors = [
-    {name = "gh-install contributors"}
+    {name = "pluck contributors"}
 ]
-keywords = ["github", "installer", "cli"]
+keywords = ["git", "forge", "installer", "cli", "github", "gitlab", "codeberg"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -31,7 +31,8 @@ classifiers = [
 ]
 
 [project.scripts]
-gh-install = "gh_install:main"
+pluck = "gh_install:main"
+gh-install = "gh_install:main"   # backward-compat alias
 
 [tool.setuptools]
 py-modules = ["gh_install"]

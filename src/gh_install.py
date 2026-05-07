@@ -26,10 +26,12 @@ if sys.platform == "darwin":
     DEFAULT_INSTALL_DIR = DEFAULT_INSTALL_DIR_MACOS
 else:
     DEFAULT_INSTALL_DIR = DEFAULT_INSTALL_DIR_LINUX
-APP_REGISTRY_FILE = Path.home() / ".gh-install-registry.json"
+APP_REGISTRY_FILE = Path.home() / ".pluck-registry.json"
+_CONFIG_OLD_REGISTRY = Path.home() / ".gh-install-registry.json"
 CONFIG_FILE = (
-    Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "gh-install" / "config.json"
+    Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pluck" / "config.json"
 )
+_CONFIG_OLD_DIR = Path.home() / ".config" / "gh-install"
 SHARED_PATHS = {
     Path.home() / "go" / "bin",
     Path.home() / "Applications",
@@ -101,7 +103,7 @@ def print_usage():
     ]
 
     print("Usage:")
-    print("  gh-install <command> [args] [options]")
+    print("  pluck <command> [args] [options]")
     print()
     print("Commands:")
     max_cmd = max(len(c[0]) for c in commands)
@@ -132,7 +134,7 @@ def _parse_gist_url(url):
 def _completion_script(shell):
     """Return shell completion script for bash or zsh."""
     if shell == "bash":
-        return """_gh_install_completion() {
+        return """_pluck_completion() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
     local commands="install update info list uninstall doctor config search export import completion version help"
@@ -151,7 +153,7 @@ def _completion_script(shell):
             local apps
             apps=$(python3 -c "
 import json, os
-p = os.path.expanduser('~/.gh-install-registry.json')
+p = os.path.expanduser('~/.pluck-registry.json')
 if os.path.exists(p):
     data = json.load(open(p))
     print(' '.join(data.get('apps', {}).keys()))
@@ -176,11 +178,11 @@ if os.path.exists(p):
             ;;
     esac
 }
-complete -F _gh_install_completion gh-install
+complete -F _pluck_completion pluck
 """
     elif shell == "zsh":
-        return """#compdef gh-install
-_gh_install() {
+        return """#compdef pluck
+_pluck() {
     local -a commands
     commands=(
         'install:Install from any git repo URL'
@@ -223,7 +225,7 @@ _gh_install() {
                     local apps
                     apps=($(python3 -c "
 import json, os
-p = os.path.expanduser('~/.gh-install-registry.json')
+p = os.path.expanduser('~/.pluck-registry.json')
 if os.path.exists(p):
     data = json.load(open(p))
     print(' '.join(data.get('apps', {}).keys()))
@@ -240,7 +242,7 @@ if os.path.exists(p):
             ;;
     esac
 }
-_gh_install
+_pluck
 """
     else:
         return None
@@ -302,6 +304,9 @@ def _detect_host_type(host):
         "bitbucket.org": "bitbucket",
         "git.sr.ht": "sourcehut",
         "gitea.com": "gitea",
+        "gogs.io": "gogs",
+        "pagure.io": "pagure",
+        "forgejo.org": "forgejo",
     }
     return forge_map.get(host_lower, "generic")
 
@@ -965,7 +970,7 @@ def register_app(repo_name, repo_url, install_path, install_method, skip_hook=Fa
 
 def _run_post_install_hook(repo_name, install_path, method):
     """Run user-defined post-install hook if configured."""
-    hook_dir = CONFIG_FILE.parent / "gh-install" / "hooks"
+    hook_dir = CONFIG_FILE.parent / "pluck" / "hooks"
     hook_file = hook_dir / "post-install.sh"
 
     if hook_file.exists():
@@ -1320,8 +1325,33 @@ def _extract_global_flags(args):
     return cleaned, json_output
 
 
+def _migrate_old_registry():
+    """Migrate from old .gh-install-registry.json to .pluck-registry.json."""
+    if _CONFIG_OLD_REGISTRY.exists() and not APP_REGISTRY_FILE.exists():
+        try:
+            data = _CONFIG_OLD_REGISTRY.read_text()
+            APP_REGISTRY_FILE.write_text(data)
+            _CONFIG_OLD_REGISTRY.unlink()
+            print_warning("Migrated registry from .gh-install-registry.json to .pluck-registry.json")
+        except OSError:
+            pass
+    if _CONFIG_OLD_DIR.exists() and not CONFIG_FILE.exists():
+        try:
+            config_data = _CONFIG_OLD_DIR / "config.json"
+            if config_data.exists():
+                CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+                config_data.rename(CONFIG_FILE)
+                _CONFIG_OLD_DIR.rmdir()
+                print_warning("Migrated config from ~/.config/gh-install/ to ~/.config/pluck/")
+        except OSError:
+            pass
+
+
 def main():
     """Main entry point"""
+    # Auto-migrate from old gh-install paths
+    _migrate_old_registry()
+
     # Initialize flags shared across command branches
     json_output = False
     force = False
@@ -1333,7 +1363,7 @@ def main():
 
     # Handle global --version flag before command dispatch
     if sys.argv[1] in ("--version", "-v"):
-        print(f"gh-install v{__version__}")
+        print(f"pluck v{__version__}")
         sys.exit(0)
 
     command = sys.argv[1]
@@ -1468,7 +1498,7 @@ def main():
             sys.exit(1)
 
     elif command == "version":
-        print(f"gh-install v{__version__}")
+        print(f"pluck v{__version__}")
 
     elif command == "help":
         print_usage()
