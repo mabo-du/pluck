@@ -11,6 +11,7 @@
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen" alt="Zero dependencies">
   <img src="https://img.shields.io/badge/Tests-111%20passing-brightgreen" alt="111 passing tests">
   <img src="https://img.shields.io/badge/Forges-11%20supported-blue" alt="11 forges supported">
+  <img src="https://img.shields.io/badge/PyPI-pluck--cli-blue?logo=pypi" alt="PyPI: pluck-cli">
   <img src="https://img.shields.io/badge/Code%20style-ruff-EF5552" alt="Code style: ruff">
 </p>
 
@@ -183,14 +184,11 @@ pip install -e .
 ./src/gh_install.py install https://gitlab.com/user/project
 ```
 
-### Via pip (not yet on PyPI)
+### Via pip
 
 ```bash
-# Once published to PyPI:
 pip install pluck-cli
 ```
-
-> **Note**: `pluck-cli` is not yet published to PyPI. Install from source above, or use the Docker image.
 
 ### Via Docker
 
