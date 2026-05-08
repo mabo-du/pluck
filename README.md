@@ -150,7 +150,11 @@ Any git hosting platform that follows the standard `host/owner/repo` URL pattern
 | `stats` | Show statistics | `pluck stats` |
 | `doctor` | Check tool availability | `pluck doctor` |
 | `config [key] [val]` | View/set config | `pluck config install_dir ~/Apps` |
-| `search <query> [--forge <name>]` | Search repos (github\|gitlab\|codeberg\|bitbucket) | `pluck search python installer --forge gitlab` |
+| `search <query> [--forge <name>] [--all] [--output <file>]` | Search repos across forges | `pluck search python installer --all --output results.txt` |
+| `pin <name>` | Pin an app to prevent updates | `pluck pin myapp` |
+| `unpin <name>` | Unpin an app | `pluck unpin myapp` |
+| `self-update` | Update pluck itself | `pluck self-update` |
+| `cache prune` | Clear download cache | `pluck cache prune` |
 | `export <file>` | Export registry | `pluck export ~/backup.json` |
 | `import <file>` | Import registry | `pluck import ~/backup.json` |
 | `completion <shell>` | Generate shell completion | `pluck completion bash` |
@@ -172,6 +176,8 @@ Any git hosting platform that follows the standard `host/owner/repo` URL pattern
 | `--no-color` | Disable colored output |
 | `--timeout <secs>` | Timeout for git clone in seconds |
 | `--retries <n>` | Number of retries for failed git clone |
+| `--jobs <n>` | Number of parallel installs (default: 1) |
+| `--release` | Install from pre-built release assets instead of cloning |
 | `--verbose` | Show detailed git clone output |
 
 ## 📥 Installation
