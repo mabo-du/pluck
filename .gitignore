@@ -40,3 +40,13 @@ Thumbs.db
 CHANGELOG.md.bak
 
 # Build artifacts (covered by dist/ above)
+
+# ── Personal AI / IDE tooling (not project infrastructure) ──
+.aider.conf.yml
+.claude/
+.forge/
+.forge.json
+.github/
+.gitnexus/
+.staipler/
+.staipler.json

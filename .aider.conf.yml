@@ -1,6 +1,0 @@
-model: nvidia/minimax-m2.7
-# WARNING: API key was hardcoded here in plaintext (SECURITY ISSUE)
-# Use environment variable NVIDIA_API_KEY instead:
-#   export NVIDIA_API_KEY="your-key-here"
-# Remove the api-key line below and use the env var.
-# api-key: <set via NVIDIA_API_KEY env var>
