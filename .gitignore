@@ -39,5 +39,4 @@ Thumbs.db
 # Release
 CHANGELOG.md.bak
 
-# Build artifacts
-dist/
+# Build artifacts (covered by dist/ above)

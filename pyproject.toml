@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pluck-cli"
-version = "0.2.0"
+version = "0.2.1"
 description = "Pluck any git repo from any forge — auto-detect, auto-install, done!"
 readme = "README.md"
 license = {text = "MIT"}
