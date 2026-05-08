@@ -90,7 +90,8 @@ def print_usage():
         ("stats", "Show installation statistics"),
         ("doctor", "Check tool availability"),
         ("config [key] [value]", "View/set config"),
-        ("search <query> [--forge <name>] [--all] [--output <file>]", "Search repos (github|gitlab|codeberg|bitbucket)"),
+        ("search <query> [--forge <name>] [--all] [--output <file>]",
+         "Search repos (github|gitlab|codeberg|bitbucket)"),
         ("export <file>", "Export registry"),
         ("import <file>", "Import registry"),
         ("completion <shell>", "Generate shell completion"),
@@ -684,14 +685,14 @@ def download_and_install(
             print(f"  [DRY RUN] Would install release assets for: {repo_info['owner']}/{repo_info['repo']}")
             return install_dir / safe_name
         install_dir.mkdir(parents=True, exist_ok=True)
-        print(f"  Attempting release asset install...")
+        print("  Attempting release asset install...")
         installed_path = install_release_asset(repo_info, install_dir)
         if installed_path:
             register_app(repo_info["repo"], repo_url, installed_path, "release")
             print()
             print(f"  {Colors.CYAN}Summary:{Colors.END}")
             print(f"    Name:     {repo_info['repo']}")
-            print(f"    Method:   release")
+            print("    Method:   release")
             print(f"    Location: {installed_path}")
             print(f"    Size:     {_get_disk_size(installed_path)}")
             return installed_path
@@ -1070,7 +1071,8 @@ def search_gitlab(query, limit=10, collector=None):
     else:
         print_header(f"GitLab Results — '{query}' ({len(results)} found)")
         for i, r in enumerate(results[:limit], 1):
-            _search_print_result(i, r["name"], r["description"], r["stars"], r["language"], r["url"], star_char="\u2605")
+            _search_print_result(i, r["name"], r["description"],
+                                 r["stars"], r["language"], r["url"], star_char="\u2605")
 
 
 def search_codeberg(query, limit=10, results=None):
@@ -1453,7 +1455,8 @@ def _parse_args(args):
     if no_color:
         _enable_colors(False)
 
-    return install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, jobs, urls
+    return (install_dir, dry_run, force, shallow, ref, method, json_output,
+            verbose, no_color, timeout, retries, jobs, urls)
 
 
 def verify_apps(json_output=False):
@@ -1789,7 +1792,8 @@ def _github_release_url(repo_info, install_dir):
     repo = repo_info["repo"]
     api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
     try:
-        req = urllib.request.Request(api_url, headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "pluck"})
+        headers = {"Accept": "application/vnd.github.v3+json", "User-Agent": "pluck"}
+        req = urllib.request.Request(api_url, headers=headers)
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode())
     except Exception as e:
@@ -1872,7 +1876,8 @@ def _gitlab_release_url(repo_info, install_dir):
     owner = repo_info["owner"]
     repo = repo_info["repo"]
     # GitLab generic packages API
-    api_url = f"https://gitlab.com/api/v4/projects/{urllib.parse.quote(owner + '/' + repo, safe='')}/releases/permalink/latest"
+    encoded = urllib.parse.quote(owner + "/" + repo, safe="")
+    api_url = f"https://gitlab.com/api/v4/projects/{encoded}/releases/permalink/latest"
     try:
         req = urllib.request.Request(api_url, headers={"Accept": "application/json", "User-Agent": "pluck"})
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -1882,7 +1887,6 @@ def _gitlab_release_url(repo_info, install_dir):
         return None
 
     links = data.get("assets", {}).get("links", [])
-    sources = data.get("assets", {}).get("sources", [])
     if not links:
         print_warning("No release assets found")
         return None
@@ -1949,9 +1953,8 @@ def main():
     command = sys.argv[1]
 
     if command == "install":
-        install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, jobs, urls = (
-            _parse_args(sys.argv[2:])
-        )
+        (install_dir, dry_run, force, shallow, ref, method, json_output,
+         verbose, no_color, timeout, retries, jobs, urls) = _parse_args(sys.argv[2:])
 
         if not urls:
             print_error("Please provide a repository URL")
@@ -1998,9 +2001,8 @@ def main():
                 )
 
     elif command == "update":
-        install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, jobs, rest = (
-            _parse_args(sys.argv[2:])
-        )
+        (install_dir, dry_run, force, shallow, ref, method, json_output,
+         verbose, no_color, timeout, retries, jobs, rest) = _parse_args(sys.argv[2:])
         if not rest:
             print_error("Please provide an app name")
             sys.exit(1)
@@ -2032,9 +2034,8 @@ def main():
         list_installed(json_output=json_output)
 
     elif command in ("uninstall", "remove"):
-        install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, jobs, rest = (
-            _parse_args(sys.argv[2:])
-        )
+        (install_dir, dry_run, force, shallow, ref, method, json_output,
+         verbose, no_color, timeout, retries, jobs, rest) = _parse_args(sys.argv[2:])
         if not rest:
             print_error("Please provide an app name")
             sys.exit(1)
@@ -2047,9 +2048,8 @@ def main():
         verify_apps(json_output=json_output)
 
     elif command == "clean":
-        install_dir, dry_run, force, shallow, ref, method, json_output, verbose, no_color, timeout, retries, jobs, rest = (
-            _parse_args(sys.argv[2:])
-        )
+        (install_dir, dry_run, force, shallow, ref, method, json_output,
+         verbose, no_color, timeout, retries, jobs, rest) = _parse_args(sys.argv[2:])
         clean_registry(dry_run=dry_run, force=force, json_output=json_output)
 
     elif command == "stats":
