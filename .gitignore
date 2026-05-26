@@ -50,3 +50,13 @@ CHANGELOG.md.bak
 .gitnexus/
 .staipler/
 .staipler.json
+.agents/
+.beads/
+.beads_rust/
+.ctx/
+.windsurf/
+.aidevops.json
+AGENTS.md
+CLAUDE.md
+TODO.md
+todo/
