@@ -19,7 +19,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 # Configuration
 DEFAULT_INSTALL_DIR_MACOS = Path.home() / "Applications"
