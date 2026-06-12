@@ -470,12 +470,15 @@ def install_python(repo_path, install_dir):
 
     try:
         app_dir = install_dir / repo_path.name
+        ignore = shutil.ignore_patterns(".git", "__pycache__", ".venv", "venv")
+        shutil.copytree(repo_path, app_dir, dirs_exist_ok=True, ignore=ignore)
+
         venv_path = app_dir / ".venv"
         venv_path.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run([sys.executable, "-m", "venv", str(venv_path)], check=True)
 
         pip_path = venv_path / "bin" / "pip"
-        subprocess.run([str(pip_path), "install", "-e", str(repo_path)], check=True)
+        subprocess.run([str(pip_path), "install", "-e", str(app_dir)], check=True)
 
         print_success(f"Installed to {app_dir}")
 
@@ -767,10 +770,11 @@ def download_and_install(
     }
 
     install_func = install_funcs.get(install_method, install_binary)
-    installed_path = install_func(repo_path, install_dir)
-
-    # Clean up temp directory
-    shutil.rmtree(temp_dir)
+    try:
+        installed_path = install_func(repo_path, install_dir)
+    finally:
+        # Clean up temp directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
     # Register the installation
     if installed_path:
@@ -824,7 +828,12 @@ def update_app(
         return True
 
     # Remove old installation
-    if old_path.exists() and old_path.resolve() not in SHARED_PATHS:
+    resolved_shared_paths = {p.resolve() for p in SHARED_PATHS}
+    if (
+        old_path.exists()
+        and old_path.resolve() not in resolved_shared_paths
+        and old_path.resolve() != Path.home().resolve()
+    ):
         if old_path.is_file():
             old_path.unlink()
         else:
@@ -922,7 +931,6 @@ def doctor(json_output=False):
         found = bool(shutil.which(exe))
         if not found and exe == "python3":
             found = bool(shutil.which("python"))
-        results.append({"tool": tool, "required": req, "found": found, "purpose": purpose})
         results.append({"tool": tool, "required": req, "found": found, "purpose": purpose})
         if not found and req == "Required":
             all_ok = False
@@ -1360,7 +1368,8 @@ def uninstall_app(repo_name, force=False):
 
     # Remove installed files — but never delete shared system directories
     install_path = Path(app_info["path"])
-    if install_path.resolve() in SHARED_PATHS or install_path.resolve() == Path.home():
+    resolved_shared_paths = {p.resolve() for p in SHARED_PATHS}
+    if install_path.resolve() in resolved_shared_paths or install_path.resolve() == Path.home().resolve():
         print_error(f"Refusing to uninstall: {install_path} is a shared directory")
         print_warning("Remove files from this directory manually instead")
         return False

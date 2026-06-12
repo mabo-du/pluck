@@ -4,9 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.3.0] - 2026-06-12
 
 ### Fixed
+- **Security**: Fixed shared path checks during uninstallation to properly resolve symlinks, preventing accidental deletion of directories like `~/bin`.
+- **Bug**: Fixed `python` install method breaking packages by copying source to the app directory before running `pip install -e`.
+- **Bug**: Prevented temporary directory resource leaks in `/tmp` by ensuring cleanup on installation errors.
+- **Bug**: Removed duplicate printing of tool checks in `pluck doctor` output.
 - Post-install hook path double-nesting (`~/.config/pluck/pluck/hooks/` → `~/.config/pluck/hooks/`)
 - PyPI license metadata now shows correctly (inline table format)
 
