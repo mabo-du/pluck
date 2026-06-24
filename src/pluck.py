@@ -34,6 +34,7 @@ def _safe_urlopen(req, timeout=None):
         raise ValueError(f"Blocked URL with disallowed scheme '{parsed.scheme}': {url}")
     return urllib.request.urlopen(req, timeout=timeout)
 
+
 # Configuration
 DEFAULT_INSTALL_DIR_MACOS = Path.home() / "Applications"
 DEFAULT_INSTALL_DIR_LINUX = Path.home() / ".local" / "opt"
@@ -43,9 +44,7 @@ else:
     DEFAULT_INSTALL_DIR = DEFAULT_INSTALL_DIR_LINUX
 APP_REGISTRY_FILE = Path.home() / ".pluck-registry.json"
 _CONFIG_OLD_REGISTRY = Path.home() / ".gh-install-registry.json"
-CONFIG_FILE = (
-    Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pluck" / "config.json"
-)
+CONFIG_FILE = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pluck" / "config.json"
 _CONFIG_OLD_DIR = Path.home() / ".config" / "gh-install"
 CACHE_DIR = Path.home() / ".cache" / "pluck"
 SHARED_PATHS = {
@@ -103,8 +102,10 @@ def print_usage():
         ("stats", "Show installation statistics"),
         ("doctor", "Check tool availability"),
         ("config [key] [value]", "View/set config"),
-        ("search <query> [--forge <name>] [--all] [--output <file>]",
-         "Search repos (github|gitlab|codeberg|bitbucket)"),
+        (
+            "search <query> [--forge <name>] [--all] [--output <file>]",
+            "Search repos (github|gitlab|codeberg|bitbucket)",
+        ),
         ("export <file>", "Export registry"),
         ("import <file>", "Import registry"),
         ("completion <shell>", "Generate shell completion"),
@@ -653,7 +654,7 @@ def _get_disk_size(path):
         return "unknown"
 
 
-def _clone_repo(repo_info, safe_name, install_dir, shallow, ref, verbose, timeout, retries):
+def _clone_repo(repo_info, safe_name, shallow, ref, verbose, timeout, retries):
     """Clone a repository to a temp directory. Returns (temp_dir, repo_path) or None on failure."""
     temp_dir = Path(tempfile.mkdtemp())
     repo_path = temp_dir / safe_name
@@ -673,9 +674,13 @@ def _clone_repo(repo_info, safe_name, install_dir, shallow, ref, verbose, timeou
             print("  Downloading...")
 
         try:
-            subprocess.run(clone_cmd, check=True, timeout=timeout,
-                           stdout=None if verbose else subprocess.DEVNULL,
-                           stderr=None if verbose else subprocess.DEVNULL)
+            subprocess.run(
+                clone_cmd,
+                check=True,
+                timeout=timeout,
+                stdout=None if verbose else subprocess.DEVNULL,
+                stderr=None if verbose else subprocess.DEVNULL,
+            )
             return temp_dir, repo_path
         except subprocess.TimeoutExpired:
             print_error(f"Clone timed out after {timeout}s")
@@ -745,11 +750,12 @@ def download_and_install(
     local_candidate = Path(repo_url).expanduser()
     if local_candidate.exists():
         return _install_local_path(
-            repo_url, install_dir,
-            dry_run=dry_run, method_override=method_override,
+            repo_url,
+            install_dir,
+            dry_run=dry_run,
+            method_override=method_override,
         )
 
-    # Parse repository URL
     repo_info = parse_repo_url(repo_url)
     if not repo_info:
         print_error(f"Invalid repository URL: {repo_url}")
@@ -779,7 +785,7 @@ def download_and_install(
     install_dir.mkdir(parents=True, exist_ok=True)
 
     # Clone to temp directory
-    clone_result = _clone_repo(repo_info, safe_name, install_dir, shallow, ref, verbose, timeout, retries)
+    clone_result = _clone_repo(repo_info, safe_name, shallow, ref, verbose, timeout, retries)
     if clone_result is None:
         return None
     temp_dir, repo_path = clone_result
@@ -858,7 +864,6 @@ def update_app(
         print(f"  [DRY RUN] Would update: {old_path}")
         return True
 
-    # Remove old installation
     resolved_shared_paths = {p.resolve() for p in SHARED_PATHS}
     if (
         old_path.exists()
@@ -870,7 +875,6 @@ def update_app(
         else:
             shutil.rmtree(old_path, ignore_errors=True)
 
-    # Remove from registry before re-installing
     del registry["apps"][repo_name]
     save_registry(registry)
 
@@ -957,7 +961,6 @@ def doctor(json_output=False):
     all_ok = True
     results = []
     for tool, (req, purpose) in tools.items():
-        # Check the canonical name, but fall back for python3 → python
         exe = tool
         found = bool(shutil.which(exe))
         if not found and exe == "python3":
@@ -1047,13 +1050,16 @@ def search_github(query, limit=10, results=None):
 
     if results is not None:
         for i, repo in enumerate(items, 1):
-            results.append({
-                "index": i, "name": repo["full_name"],
-                "description": repo.get("description") or "No description",
-                "stars": repo["stargazers_count"],
-                "language": repo.get("language") or "Unknown",
-                "url": repo["html_url"],
-            })
+            results.append(
+                {
+                    "index": i,
+                    "name": repo["full_name"],
+                    "description": repo.get("description") or "No description",
+                    "stars": repo["stargazers_count"],
+                    "language": repo.get("language") or "Unknown",
+                    "url": repo["html_url"],
+                }
+            )
     else:
         print_header(f"GitHub Results — '{query}' ({len(items)} found)")
         for i, repo in enumerate(items, 1):
@@ -1088,30 +1094,36 @@ def search_gitlab(query, limit=10, collector=None):
     for project in data:
         # GitLab returns projects ordered by last_activity by default;
         # sort with our own star sort since we requested order_by=stars
-        results.append({
-            "name": project.get("path_with_namespace", project["path"]),
-            "description": project.get("description") or "No description",
-            "stars": project.get("star_count", 0),
-            "language": project.get("programming_language") or project.get("language") or "Unknown",
-            "url": project.get("web_url", project.get("http_url_to_repo", "")),
-        })
+        results.append(
+            {
+                "name": project.get("path_with_namespace", project["path"]),
+                "description": project.get("description") or "No description",
+                "stars": project.get("star_count", 0),
+                "language": project.get("programming_language") or project.get("language") or "Unknown",
+                "url": project.get("web_url", project.get("http_url_to_repo", "")),
+            }
+        )
 
     results.sort(key=lambda r: r["stars"], reverse=True)
 
     if collector is not None:
         for i, r in enumerate(results[:limit], 1):
-            collector.append({
-                "index": i, "name": r["name"],
-                "description": r["description"],
-                "stars": r["stars"],
-                "language": r["language"],
-                "url": r["url"],
-            })
+            collector.append(
+                {
+                    "index": i,
+                    "name": r["name"],
+                    "description": r["description"],
+                    "stars": r["stars"],
+                    "language": r["language"],
+                    "url": r["url"],
+                }
+            )
     else:
         print_header(f"GitLab Results — '{query}' ({len(results)} found)")
         for i, r in enumerate(results[:limit], 1):
-            _search_print_result(i, r["name"], r["description"],
-                                 r["stars"], r["language"], r["url"], star_char="\u2605")
+            _search_print_result(
+                i, r["name"], r["description"], r["stars"], r["language"], r["url"], star_char="\u2605"
+            )
 
 
 def search_codeberg(query, limit=10, results=None):
@@ -1138,13 +1150,16 @@ def search_codeberg(query, limit=10, results=None):
 
     if results is not None:
         for i, repo in enumerate(items, 1):
-            results.append({
-                "index": i, "name": repo.get("full_name", "unknown"),
-                "description": repo.get("description") or "No description",
-                "stars": repo.get("stars_count", 0),
-                "language": repo.get("language") or "Unknown",
-                "url": repo.get("html_url", ""),
-            })
+            results.append(
+                {
+                    "index": i,
+                    "name": repo.get("full_name", "unknown"),
+                    "description": repo.get("description") or "No description",
+                    "stars": repo.get("stars_count", 0),
+                    "language": repo.get("language") or "Unknown",
+                    "url": repo.get("html_url", ""),
+                }
+            )
     else:
         print_header(f"Codeberg Results — '{query}' ({len(items)} found)")
         for i, repo in enumerate(items, 1):
@@ -1158,10 +1173,18 @@ def search_codeberg(query, limit=10, results=None):
             )
 
 
+def _bitbucket_repo_url(repo):
+    """Extract the HTML URL from a Bitbucket API repo object."""
+    links = repo.get("links") if isinstance(repo, dict) else None
+    html = links.get("html") if isinstance(links, dict) else None
+    href = html.get("href") if isinstance(html, dict) else None
+    return href or ""
+
+
 def search_bitbucket(query, limit=10, results=None):
     """Search repositories using the Bitbucket Cloud API."""
     print(f"  Searching Bitbucket for '{query}'...")
-    url = f"https://api.bitbucket.org/2.0/repositories?q=name~\"{urllib.parse.quote(query)}\"&sort=-updated_on"
+    url = f'https://api.bitbucket.org/2.0/repositories?q=name~"{urllib.parse.quote(query)}"&sort=-updated_on'
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with _safe_urlopen(req, timeout=10) as resp:
@@ -1177,20 +1200,23 @@ def search_bitbucket(query, limit=10, results=None):
 
     if results is not None:
         for i, repo in enumerate(items, 1):
-            results.append({
-                "index": i, "name": repo.get("full_name", "unknown"),
-                "description": repo.get("description") or "No description",
-                "stars": 0,
-                "language": repo.get("language") or "Unknown",
-                "url": repo.get("links", {}).get("html", {}).get("href", ""),
-            })
+            results.append(
+                {
+                    "index": i,
+                    "name": repo.get("full_name", "unknown"),
+                    "description": repo.get("description") or "No description",
+                    "stars": 0,
+                    "language": repo.get("language") or "Unknown",
+                    "url": _bitbucket_repo_url(repo),
+                }
+            )
     else:
         print_header(f"Bitbucket Results — '{query}' ({len(items)} found)")
         for i, repo in enumerate(items, 1):
             full_name = repo.get("full_name", "unknown")
             desc = repo.get("description") or "No description"
             lang = repo.get("language") or "Unknown"
-            url = repo.get("links", {}).get("html", {}).get("href", "")
+            url = _bitbucket_repo_url(repo)
             _search_print_result(i, full_name, desc, 0, lang, url, star_char="\u2022")
 
 
@@ -1412,7 +1438,6 @@ def uninstall_app(repo_name, force=False):
         else:
             shutil.rmtree(install_path, ignore_errors=True)
 
-    # Remove from registry
     del registry["apps"][repo_name]
     save_registry(registry)
 
@@ -1443,19 +1468,19 @@ class _ParseContext:
 def _parse_flag(flag, ctx, args, i):
     """Handle a single CLI flag. Returns the updated index."""
     handlers = {
-        "--dir": lambda: setattr(ctx, 'install_dir', Path(args[i + 1]).expanduser()) or i + 2,
-        "--dry-run": lambda: setattr(ctx, 'dry_run', True) or i + 1,
-        "--force": lambda: setattr(ctx, 'force', True) or i + 1,
-        "--yes": lambda: setattr(ctx, 'yes', True) or i + 1,
-        "--shallow": lambda: setattr(ctx, 'shallow', True) or i + 1,
-        "--ref": lambda: setattr(ctx, 'ref', args[i + 1]) or i + 2,
-        "--method": lambda: setattr(ctx, 'method', args[i + 1]) or i + 2,
-        "--json": lambda: setattr(ctx, 'json_output', True) or i + 1,
-        "--verbose": lambda: setattr(ctx, 'verbose', True) or i + 1,
-        "--no-color": lambda: setattr(ctx, 'no_color', True) or i + 1,
-        "--timeout": lambda: _try_int(ctx, 'timeout', args[i + 1]) or i + 2,
-        "--retries": lambda: _try_int(ctx, 'retries', args[i + 1]) or i + 2,
-        "--jobs": lambda: setattr(ctx, 'jobs', max(1, _try_int_val(args[i + 1], 1))) or i + 2,
+        "--dir": lambda: setattr(ctx, "install_dir", Path(args[i + 1]).expanduser()) or i + 2,
+        "--dry-run": lambda: setattr(ctx, "dry_run", True) or i + 1,
+        "--force": lambda: setattr(ctx, "force", True) or i + 1,
+        "--yes": lambda: setattr(ctx, "yes", True) or i + 1,
+        "--shallow": lambda: setattr(ctx, "shallow", True) or i + 1,
+        "--ref": lambda: setattr(ctx, "ref", args[i + 1]) or i + 2,
+        "--method": lambda: setattr(ctx, "method", args[i + 1]) or i + 2,
+        "--json": lambda: setattr(ctx, "json_output", True) or i + 1,
+        "--verbose": lambda: setattr(ctx, "verbose", True) or i + 1,
+        "--no-color": lambda: setattr(ctx, "no_color", True) or i + 1,
+        "--timeout": lambda: _try_int(ctx, "timeout", args[i + 1]) or i + 2,
+        "--retries": lambda: _try_int(ctx, "retries", args[i + 1]) or i + 2,
+        "--jobs": lambda: setattr(ctx, "jobs", max(1, _try_int_val(args[i + 1], 1))) or i + 2,
     }
     handler = handlers.get(flag)
     if handler and i + _flag_arg_count(flag) < len(args):
@@ -1474,7 +1499,7 @@ def _try_int(ctx, attr, val):
     try:
         setattr(ctx, attr, int(val))
     except ValueError:
-        pass
+        pass  # non-integer flag value — leave default
 
 
 def _try_int_val(val, default):
@@ -1497,9 +1522,21 @@ def _parse_args(args):
     if ctx.no_color:
         _enable_colors(False)
 
-    return (ctx.install_dir, ctx.dry_run, ctx.force, ctx.shallow, ctx.ref,
-            ctx.method, ctx.json_output, ctx.verbose, ctx.no_color,
-            ctx.timeout, ctx.retries, ctx.jobs, ctx.urls)
+    return (
+        ctx.install_dir,
+        ctx.dry_run,
+        ctx.force,
+        ctx.shallow,
+        ctx.ref,
+        ctx.method,
+        ctx.json_output,
+        ctx.verbose,
+        ctx.no_color,
+        ctx.timeout,
+        ctx.retries,
+        ctx.jobs,
+        ctx.urls,
+    )
 
 
 def verify_apps(json_output=False):
@@ -1511,25 +1548,32 @@ def verify_apps(json_output=False):
         install_path = Path(info["path"])
         exists = install_path.exists()
         size = _get_disk_size(install_path) if exists else "N/A"
-        results.append({
-            "name": name,
-            "url": info["url"],
-            "path": info["path"],
-            "exists": exists,
-            "size": size,
-            "installed_at": info["installed_at"],
-        })
+        results.append(
+            {
+                "name": name,
+                "url": info["url"],
+                "path": info["path"],
+                "exists": exists,
+                "size": size,
+                "installed_at": info["installed_at"],
+            }
+        )
 
     valid_count = sum(1 for r in results if r["exists"])
     invalid_count = len(results) - valid_count
 
     if json_output:
-        print(json.dumps({
-            "total": len(results),
-            "valid": valid_count,
-            "invalid": invalid_count,
-            "apps": results,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "total": len(results),
+                    "valid": valid_count,
+                    "invalid": invalid_count,
+                    "apps": results,
+                },
+                indent=2,
+            )
+        )
         return valid_count == len(results)
 
     print_header(f"Verification ({len(results)} apps)")
@@ -1574,19 +1618,24 @@ def stats_command(json_output=False):
                             if not os.path.islink(fp):
                                 total_size += os.path.getsize(fp)
             except OSError:
-                pass
+                pass  # skip inaccessible files in size calculation
         else:
             orphaned += 1
 
     if json_output:
-        print(json.dumps({
-            "total_apps": total,
-            "valid": valid,
-            "orphaned": orphaned,
-            "total_size_bytes": total_size,
-            "total_size_human": _format_bytes(total_size),
-            "by_method": method_counts,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "total_apps": total,
+                    "valid": valid,
+                    "orphaned": orphaned,
+                    "total_size_bytes": total_size,
+                    "total_size_human": _format_bytes(total_size),
+                    "by_method": method_counts,
+                },
+                indent=2,
+            )
+        )
         return
 
     print_header("Installation Statistics")
@@ -1639,7 +1688,7 @@ def _migrate_old_registry():
             _CONFIG_OLD_REGISTRY.unlink()
             print_warning("Migrated registry from .gh-install-registry.json to .pluck-registry.json")
         except OSError:
-            pass
+            pass  # migration is best-effort — old file may already be gone
     if _CONFIG_OLD_DIR.exists() and not CONFIG_FILE.exists():
         try:
             config_data = _CONFIG_OLD_DIR / "config.json"
@@ -1649,7 +1698,7 @@ def _migrate_old_registry():
                 _CONFIG_OLD_DIR.rmdir()
                 print_warning("Migrated config from ~/.config/gh-install/ to ~/.config/pluck/")
         except OSError:
-            pass
+            pass  # migration is best-effort — old dir may already be gone
 
 
 # ── Pin / Unpin ──
@@ -1731,9 +1780,14 @@ def _install_local_path(repo_url, install_dir, dry_run=False, method_override=No
     print(f"  Detected install method: {install_method}")
 
     install_funcs = {
-        "python": install_python, "node": install_node, "go": install_go,
-        "rust": install_rust, "binary": install_binary, "make": install_make,
-        "script": install_script, "download": install_binary,
+        "python": install_python,
+        "node": install_node,
+        "go": install_go,
+        "rust": install_rust,
+        "binary": install_binary,
+        "make": install_make,
+        "script": install_script,
+        "download": install_binary,
     }
     install_func = install_funcs.get(install_method, install_binary)
     installed_path = install_func(local_path, install_dir)
@@ -1759,7 +1813,9 @@ def self_update():
     try:
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "--upgrade", "pluck-cli"],
-            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
         print_success("pluck updated to latest version")
         return True
@@ -1793,7 +1849,6 @@ def search_all_forges(query, limit=5, output_file=None):
         results = _search_with_results(query, limit, searcher)
         all_results.append((name, results))
 
-    # Print aggregated results
     print_header(f"Aggregated Search Results — '{query}'")
     for forge_name, results in all_results:
         if results:
@@ -1889,6 +1944,7 @@ def _github_release_url(repo_info, install_dir):
     # If it's an archive, extract it
     if best["name"].endswith(".tar.gz") or best["name"].endswith(".tgz"):
         import tarfile
+
         extract_dir = install_dir / repo
         extract_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(dest) as tar:
@@ -1897,6 +1953,7 @@ def _github_release_url(repo_info, install_dir):
         return extract_dir
     elif best["name"].endswith(".zip"):
         import zipfile
+
         extract_dir = install_dir / repo
         extract_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(dest) as zf:
@@ -1929,7 +1986,8 @@ def _gitlab_release_url(repo_info, install_dir):
         print_warning(f"Could not fetch GitLab release: {e}")
         return None
 
-    links = data.get("assets", {}).get("links", [])
+    assets = data.get("assets") or {}
+    links = assets.get("links") or []
     if not links:
         print_warning("No release assets found")
         return None
@@ -1976,8 +2034,21 @@ def install_release_asset(repo_info, install_dir):
 
 def _cmd_install():
     """Handle 'install' command."""
-    (install_dir, dry_run, force, shallow, ref, method, json_output,
-     verbose, no_color, timeout, retries, jobs, urls) = _parse_args(sys.argv[2:])
+    (
+        install_dir,
+        dry_run,
+        force,
+        shallow,
+        ref,
+        method,
+        json_output,
+        verbose,
+        no_color,
+        timeout,
+        retries,
+        jobs,
+        urls,
+    ) = _parse_args(sys.argv[2:])
 
     if not urls:
         print_error("Please provide a repository URL")
@@ -1995,11 +2066,18 @@ def _cmd_install():
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
             futures = {
                 pool.submit(
-                    download_and_install, url,
-                    install_dir=install_dir, dry_run=dry_run, shallow=shallow,
-                    ref=ref, method_override=method, verbose=verbose,
-                    timeout=timeout, retries=retries,
-                ): url for url in urls
+                    download_and_install,
+                    url,
+                    install_dir=install_dir,
+                    dry_run=dry_run,
+                    shallow=shallow,
+                    ref=ref,
+                    method_override=method,
+                    verbose=verbose,
+                    timeout=timeout,
+                    retries=retries,
+                ): url
+                for url in urls
             }
             for future in concurrent.futures.as_completed(futures):
                 url = futures[future]
@@ -2012,16 +2090,34 @@ def _cmd_install():
             print(f"\nInstalling: {url}")
             download_and_install(
                 url,
-                install_dir=install_dir, dry_run=dry_run, shallow=shallow,
-                ref=ref, method_override=method, verbose=verbose,
-                timeout=timeout, retries=retries,
+                install_dir=install_dir,
+                dry_run=dry_run,
+                shallow=shallow,
+                ref=ref,
+                method_override=method,
+                verbose=verbose,
+                timeout=timeout,
+                retries=retries,
             )
 
 
 def _cmd_update():
     """Handle 'update' command."""
-    (install_dir, dry_run, force, shallow, ref, method, json_output,
-     verbose, no_color, timeout, retries, jobs, rest) = _parse_args(sys.argv[2:])
+    (
+        install_dir,
+        dry_run,
+        force,
+        shallow,
+        ref,
+        method,
+        json_output,
+        verbose,
+        no_color,
+        timeout,
+        retries,
+        jobs,
+        rest,
+    ) = _parse_args(sys.argv[2:])
     if not rest:
         print_error("Please provide an app name")
         sys.exit(1)
@@ -2031,8 +2127,14 @@ def _cmd_update():
 
     for name in rest:
         update_app(
-            name, install_dir=install_dir, dry_run=dry_run, force=force,
-            shallow=shallow, ref=ref, timeout=timeout, retries=retries,
+            name,
+            install_dir=install_dir,
+            dry_run=dry_run,
+            force=force,
+            shallow=shallow,
+            ref=ref,
+            timeout=timeout,
+            retries=retries,
         )
 
 
@@ -2053,8 +2155,21 @@ def _cmd_list():
 
 def _cmd_uninstall():
     """Handle 'uninstall' / 'remove' command."""
-    (install_dir, dry_run, force, shallow, ref, method, json_output,
-     verbose, no_color, timeout, retries, jobs, rest) = _parse_args(sys.argv[2:])
+    (
+        install_dir,
+        dry_run,
+        force,
+        shallow,
+        ref,
+        method,
+        json_output,
+        verbose,
+        no_color,
+        timeout,
+        retries,
+        jobs,
+        rest,
+    ) = _parse_args(sys.argv[2:])
     if not rest:
         print_error("Please provide an app name")
         sys.exit(1)
@@ -2070,8 +2185,21 @@ def _cmd_verify():
 
 def _cmd_clean():
     """Handle 'clean' command."""
-    (install_dir, dry_run, force, shallow, ref, method, json_output,
-     verbose, no_color, timeout, retries, jobs, rest) = _parse_args(sys.argv[2:])
+    (
+        install_dir,
+        dry_run,
+        force,
+        shallow,
+        ref,
+        method,
+        json_output,
+        verbose,
+        no_color,
+        timeout,
+        retries,
+        jobs,
+        rest,
+    ) = _parse_args(sys.argv[2:])
     clean_registry(dry_run=dry_run, force=force, json_output=json_output)
 
 

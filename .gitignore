@@ -62,3 +62,17 @@ todo/
 
 # ── AI-generated implementation plans (internal artifacts) ──
 docs/plans/
+
+# ── Charter & agent session artifacts ──
+*.charter-session
+.charter/
+.hk/
+
+# ── Local agent caches (not project infrastructure) ──
+.claude/local/
+.cursor/cache/
+
+# ── Environment files (local overrides, not templates) ──
+.env
+.env.local
+.env.production

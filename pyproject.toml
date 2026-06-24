@@ -34,7 +34,7 @@ pluck = "pluck:main"
 gh-install = "pluck:main"   # backward-compat alias
 
 [tool.setuptools]
-py-modules = ["pluck"]
+py-modules = ["pluck", "gh_install"]
 
 [tool.setuptools.package-dir]
 "" = "src"

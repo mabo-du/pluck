@@ -24,24 +24,21 @@ import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parsePlan, runPlan, detectWorkers, getCostReport } from "./orchestrator.mjs";
-import { createHub, readHubPort } from "./hub.mjs";
+import { runPlan, getCostReport } from "./orchestrator.mjs";
+import { createHub } from "./hub.mjs";
 import express from "express";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// ─── Config ───────────────────────────────────────────────────────────
 const PROJECT_DIR = process.env.PLAN_FORGE_PROJECT || process.argv.find((a, i) => process.argv[i - 1] === "--project") || process.cwd();
 const HTTP_PORT = parseInt(process.env.PLAN_FORGE_HTTP_PORT || "3100", 10);
 const IS_WINDOWS = process.platform === "win32";
 const PFORGE = IS_WINDOWS ? "powershell.exe -NoProfile -ExecutionPolicy Bypass -File pforge.ps1" : "bash pforge.sh";
 
-// ─── Orchestrator State ───────────────────────────────────────────────
 let activeAbortController = null;
 let activeRunPromise = null;
 let activeHub = null; // Phase 3: WebSocket hub instance
 
-// ─── Helpers ──────────────────────────────────────────────────────────
 function runPforge(args, cwd = PROJECT_DIR) {
   const cmd = `${PFORGE} ${args}`;
   try {
@@ -71,7 +68,6 @@ function findProjectRoot(startDir) {
   return startDir;
 }
 
-// ─── Tool Definitions ─────────────────────────────────────────────────
 const TOOLS = [
   {
     name: "forge_smith",
@@ -222,7 +218,6 @@ const TOOLS = [
   },
 ];
 
-// ─── Tool Execution ───────────────────────────────────────────────────
 function executeTool(name, args) {
   const cwd = args.path ? findProjectRoot(resolve(args.path)) : findProjectRoot(PROJECT_DIR);
 
@@ -255,7 +250,6 @@ function executeTool(name, args) {
   }
 }
 
-// ─── MCP Server ───────────────────────────────────────────────────────
 const server = new Server(
   { name: "plan-forge-mcp", version: "2.0.0" },
   { capabilities: { tools: {} } }
@@ -391,7 +385,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   return _handleSyncTool(name, args);
 });
 
-// ─── Express App + REST API (Phase 4, C6) ─────────────────────────────
 function createExpressApp() {
   const app = express();
   app.use(express.json());
@@ -453,7 +446,6 @@ function createExpressApp() {
       if (!req.body || typeof req.body !== "object") {
         return res.status(400).json({ error: "Request body must be a JSON object" });
       }
-      // Validate required fields
       const config = req.body;
       if (config.preset && typeof config.preset !== "string") {
         return res.status(400).json({ error: "preset must be a string" });
@@ -507,13 +499,11 @@ function createExpressApp() {
   return app;
 }
 
-// ─── Start ────────────────────────────────────────────────────────────
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Plan Forge MCP server running (stdio transport)");
 
-  // Phase 4: Start Express HTTP server for dashboard + REST API
   try {
     const app = createExpressApp();
     app.listen(HTTP_PORT, "127.0.0.1", () => {
@@ -523,7 +513,6 @@ async function main() {
     console.error(`[http] Express server failed to start: ${err.message} (non-fatal)`);
   }
 
-  // Phase 3: Start WebSocket hub alongside MCP server
   try {
     activeHub = await createHub({ cwd: PROJECT_DIR });
     console.error(`Plan Forge WebSocket hub running on port ${activeHub.port}`);

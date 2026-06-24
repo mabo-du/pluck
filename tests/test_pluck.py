@@ -432,8 +432,19 @@ class TestGetDiskSize:
 class TestParseArgs:
     def test_urls_only(self):
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
         ) = _parse_args(["https://github.com/a/b"])
         assert install_dir is None
         assert dry_run is False
@@ -446,63 +457,159 @@ class TestParseArgs:
     def test_dir_flag(self):
         tmpdir = tempfile.mkdtemp()
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
         ) = _parse_args(["--dir", tmpdir, "https://github.com/a/b"])
         assert install_dir == Path(tmpdir)
         assert urls == ["https://github.com/a/b"]
 
     def test_dry_run_flag(self):
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
         ) = _parse_args(["--dry-run", "https://github.com/a/b"])
         assert dry_run is True
 
     def test_force_flag(self):
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
         ) = _parse_args(["--force", "https://github.com/a/b"])
         assert force is True
 
     def test_yes_flag(self):
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
         ) = _parse_args(["--yes", "https://github.com/a/b"])
         assert force is True
 
     def test_shallow_flag(self):
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
         ) = _parse_args(["--shallow", "https://github.com/a/b"])
         assert shallow is True
 
     def test_ref_flag(self):
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
         ) = _parse_args(["--ref", "v2.0", "https://github.com/a/b"])
         assert ref == "v2.0"
 
     def test_method_flag(self):
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
         ) = _parse_args(["--method", "python", "https://github.com/a/b"])
         assert method == "python"
 
     def test_combined_flags(self):
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
-        ) = _parse_args([
-            "--dir", "/custom", "--dry-run", "--shallow",
-            "--ref", "main", "--method", "python",
-            "https://github.com/a/b",
-        ])
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
+        ) = _parse_args(
+            [
+                "--dir",
+                "/custom",
+                "--dry-run",
+                "--shallow",
+                "--ref",
+                "main",
+                "--method",
+                "python",
+                "https://github.com/a/b",
+            ]
+        )
         assert install_dir == Path("/custom")
         assert dry_run is True
         assert shallow is True
@@ -511,11 +618,27 @@ class TestParseArgs:
 
     def test_flags_between_urls(self):
         (
-            install_dir, dry_run, force, shallow, ref,
-            method, json_output, verbose, no_color, timeout, retries, jobs, urls,
-        ) = _parse_args([
-            "https://github.com/a/b", "--dir", "/opt", "https://github.com/c/d",
-        ])
+            install_dir,
+            dry_run,
+            force,
+            shallow,
+            ref,
+            method,
+            json_output,
+            verbose,
+            no_color,
+            timeout,
+            retries,
+            jobs,
+            urls,
+        ) = _parse_args(
+            [
+                "https://github.com/a/b",
+                "--dir",
+                "/opt",
+                "https://github.com/c/d",
+            ]
+        )
         assert install_dir == Path("/opt")
         assert len(urls) == 2
 
@@ -535,9 +658,7 @@ class TestDryRun:
         install_dir = Path(tmp) / "install"
         install_dir.mkdir()
 
-        result = download_and_install(
-            "https://github.com/test/myrepo", install_dir=install_dir, dry_run=True
-        )
+        result = download_and_install("https://github.com/test/myrepo", install_dir=install_dir, dry_run=True)
 
         assert result == install_dir / "myrepo"
         assert len(list(install_dir.iterdir())) == 0
@@ -837,16 +958,18 @@ class TestVerifyApps:
 
         original = pluck.APP_REGISTRY_FILE
         pluck.APP_REGISTRY_FILE = self.registry_file
-        save_registry({
-            "apps": {
-                "existing-app": {
-                    "url": "https://github.com/a/existing-app",
-                    "path": str(self.install_dir / "existing-app"),
-                    "method": "python",
-                    "installed_at": "2026-01-01",
+        save_registry(
+            {
+                "apps": {
+                    "existing-app": {
+                        "url": "https://github.com/a/existing-app",
+                        "path": str(self.install_dir / "existing-app"),
+                        "method": "python",
+                        "installed_at": "2026-01-01",
+                    }
                 }
             }
-        })
+        )
 
         result = verify_apps()
         assert result is True
@@ -862,16 +985,18 @@ class TestVerifyApps:
 
         original = pluck.APP_REGISTRY_FILE
         pluck.APP_REGISTRY_FILE = self.registry_file
-        save_registry({
-            "apps": {
-                "missing-app": {
-                    "url": "https://github.com/a/missing-app",
-                    "path": str(self.tmp / "nonexistent"),
-                    "method": "python",
-                    "installed_at": "2026-01-01",
+        save_registry(
+            {
+                "apps": {
+                    "missing-app": {
+                        "url": "https://github.com/a/missing-app",
+                        "path": str(self.tmp / "nonexistent"),
+                        "method": "python",
+                        "installed_at": "2026-01-01",
+                    }
                 }
             }
-        })
+        )
 
         result = verify_apps()
         assert result is False
@@ -886,16 +1011,18 @@ class TestVerifyApps:
 
         original = pluck.APP_REGISTRY_FILE
         pluck.APP_REGISTRY_FILE = self.registry_file
-        save_registry({
-            "apps": {
-                "existing-app": {
-                    "url": "https://github.com/a/existing-app",
-                    "path": str(self.install_dir / "existing-app"),
-                    "method": "python",
-                    "installed_at": "2026-01-01",
+        save_registry(
+            {
+                "apps": {
+                    "existing-app": {
+                        "url": "https://github.com/a/existing-app",
+                        "path": str(self.install_dir / "existing-app"),
+                        "method": "python",
+                        "installed_at": "2026-01-01",
+                    }
                 }
             }
-        })
+        )
 
         result = verify_apps(json_output=True)
         assert result is True
@@ -919,22 +1046,24 @@ class TestStatsCommand:
 
         original = pluck.APP_REGISTRY_FILE
         pluck.APP_REGISTRY_FILE = self.registry_file
-        save_registry({
-            "apps": {
-                "app1": {
-                    "url": "https://github.com/a/app1",
-                    "path": str(self.install_dir / "app1"),
-                    "method": "python",
-                    "installed_at": "2026-01-01",
-                },
-                "app2": {
-                    "url": "https://github.com/a/app2",
-                    "path": str(self.install_dir / "app2"),
-                    "method": "node",
-                    "installed_at": "2026-01-01",
-                },
+        save_registry(
+            {
+                "apps": {
+                    "app1": {
+                        "url": "https://github.com/a/app1",
+                        "path": str(self.install_dir / "app1"),
+                        "method": "python",
+                        "installed_at": "2026-01-01",
+                    },
+                    "app2": {
+                        "url": "https://github.com/a/app2",
+                        "path": str(self.install_dir / "app2"),
+                        "method": "node",
+                        "installed_at": "2026-01-01",
+                    },
+                }
             }
-        })
+        )
 
         stats_command()
         captured = capsys.readouterr()
@@ -950,16 +1079,18 @@ class TestStatsCommand:
 
         original = pluck.APP_REGISTRY_FILE
         pluck.APP_REGISTRY_FILE = self.registry_file
-        save_registry({
-            "apps": {
-                "app1": {
-                    "url": "https://github.com/a/app1",
-                    "path": str(self.install_dir / "app1"),
-                    "method": "python",
-                    "installed_at": "2026-01-01",
+        save_registry(
+            {
+                "apps": {
+                    "app1": {
+                        "url": "https://github.com/a/app1",
+                        "path": str(self.install_dir / "app1"),
+                        "method": "python",
+                        "installed_at": "2026-01-01",
+                    }
                 }
             }
-        })
+        )
 
         stats_command(json_output=True)
         pluck.APP_REGISTRY_FILE = original

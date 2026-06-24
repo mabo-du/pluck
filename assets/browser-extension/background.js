@@ -5,7 +5,6 @@
 // It opens the pluck:// protocol handler, which must be registered on
 // your system (run scripts/install-protocol-handler.sh).
 
-// Create the context menu item on installation
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "pluck-install",
