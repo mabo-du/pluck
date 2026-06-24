@@ -15,11 +15,11 @@ install, update, info, list, uninstall, verify, clean, stats, doctor, config, se
 
 ## Verification
 
-```bash
-python -m pytest tests/ -v           # run all tests
-ruff check src/ tests/               # lint
-python -m build                      # verify package builds
-```
+Verification command: `python -m pytest tests/ -v`
+
+Also run before claiming completion:
+- `ruff check src/ tests/` (lint)
+- `python -m build` (package builds)
 
 ## Off-limits for agents
 
