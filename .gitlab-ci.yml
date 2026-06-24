@@ -19,7 +19,7 @@ before_script:
   stage: test
   script:
     - pip install pytest pytest-cov
-    - python -m pytest tests/ -v --cov=gh_install --cov-report=term
+    - python -m pytest tests/ -v --cov=pluck --cov-report=term
   parallel:
     matrix:
       - IMAGE: ["python:3.8-slim", "python:3.9-slim", "python:3.10-slim",

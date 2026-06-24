@@ -30,11 +30,11 @@ classifiers = [
 ]
 
 [project.scripts]
-pluck = "gh_install:main"
-gh-install = "gh_install:main"   # backward-compat alias
+pluck = "pluck:main"
+gh-install = "pluck:main"   # backward-compat alias
 
 [tool.setuptools]
-py-modules = ["gh_install"]
+py-modules = ["pluck"]
 
 [tool.setuptools.package-dir]
 "" = "src"

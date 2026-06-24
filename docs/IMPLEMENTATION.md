@@ -7,10 +7,10 @@
 ### Entry Point
 
 ```
-src/gh_install.py
+src/pluck.py
 ```
 
-Executed via `python src/gh_install.py <command> [args]` or `gh-install` after pip install.
+Executed via `python src/pluck.py <command> [args]` or `pluck` after pip install.
 
 ### Core Modules (by function group)
 
@@ -21,8 +21,8 @@ Executed via `python src/gh_install.py <command> [args]` or `gh-install` after p
 | **Detection** | `detect_install_method()` | Scans repo for project files with configurable method priority |
 | **Installers** | `install_script()`, `install_python()`, `install_node()`, `install_go()`, `install_rust()`, `install_binary()`, `install_make()` | Project-type-specific installation logic |
 | **Orchestration** | `download_and_install()` | Clones to temp (with shallow/ref support), detects method, dispatches installer, registers, cleans up, shows summary |
-| **Registry** | `register_app()`, `load_registry()`, `save_registry()`, `list_installed()`, `uninstall_app()` | JSON-based app tracking at `~/.gh-install-registry.json` |
-| **Config** | `_load_user_config()`, `_save_user_config()`, `config_command()` | User config at `$XDG_CONFIG_HOME/gh-install/config.json` |
+| **Registry** | `register_app()`, `load_registry()`, `save_registry()`, `list_installed()`, `uninstall_app()` | JSON-based app tracking at `~/.pluck-registry.json` |
+| **Config** | `_load_user_config()`, `_save_user_config()`, `config_command()` | User config at `$XDG_CONFIG_HOME/pluck/config.json` |
 | **Info** | `info_app()`, `_get_disk_size()` | Detailed app info with disk size calculation |
 | **Doctor** | `doctor()` | Checks availability of git, python3, npm, go, cargo, make |
 | **Search** | `search_github()` | GitHub API repository search via `urllib` |

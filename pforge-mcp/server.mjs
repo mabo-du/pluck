@@ -265,114 +265,101 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+async function _handleRunPlan(args) {
+  try {
+    const cwd = args.path ? findProjectRoot(resolve(args.path)) : findProjectRoot(PROJECT_DIR);
+    const planPath = resolve(cwd, args.plan);
 
-  // ─── Async orchestrator tools ───
-  if (name === "forge_run_plan") {
-    try {
-      const cwd = args.path ? findProjectRoot(resolve(args.path)) : findProjectRoot(PROJECT_DIR);
-      const planPath = resolve(cwd, args.plan);
-
-      if (!existsSync(planPath)) {
-        return { content: [{ type: "text", text: `Plan file not found: ${args.plan}` }], isError: true };
-      }
-
-      activeAbortController = new AbortController();
-      // Phase 3: If hub is running, use it as event handler for live broadcasting
-      const eventHandler = activeHub ? { handle: (event) => activeHub.broadcast(event) } : null;
-      const result = await runPlan(planPath, {
-        cwd,
-        model: args.model || null,
-        mode: args.mode || "auto",
-        resumeFrom: args.resumeFrom != null ? Number(args.resumeFrom) : null,
-        estimate: args.estimate || false,
-        dryRun: args.dryRun || false,
-        abortController: activeAbortController,
-        eventHandler,
-      });
-      activeAbortController = null;
-
-      // C3: Safe status check with fallback
-      const isError = !result || result.status === "failed" || (result.results?.failed > 0);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        isError,
-      };
-    } catch (err) {
-      activeAbortController = null;
-      return { content: [{ type: "text", text: `Orchestrator error: ${err.message}` }], isError: true };
+    if (!existsSync(planPath)) {
+      return { content: [{ type: "text", text: `Plan file not found: ${args.plan}` }], isError: true };
     }
-  }
 
-  if (name === "forge_abort") {
-    if (activeAbortController) {
-      activeAbortController.abort();
-      return { content: [{ type: "text", text: "Abort signal sent. Current slice will finish, then execution stops." }] };
+    activeAbortController = new AbortController();
+    const eventHandler = activeHub ? { handle: (event) => activeHub.broadcast(event) } : null;
+    const result = await runPlan(planPath, {
+      cwd,
+      model: args.model || null,
+      mode: args.mode || "auto",
+      resumeFrom: args.resumeFrom != null ? Number(args.resumeFrom) : null,
+      estimate: args.estimate || false,
+      dryRun: args.dryRun || false,
+      abortController: activeAbortController,
+      eventHandler,
+    });
+    activeAbortController = null;
+
+    const isError = !result || result.status === "failed" || (result.results?.failed > 0);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      isError,
+    };
+  } catch (err) {
+    activeAbortController = null;
+    return { content: [{ type: "text", text: `Orchestrator error: ${err.message}` }], isError: true };
+  }
+}
+
+function _handleAbort() {
+  if (activeAbortController) {
+    activeAbortController.abort();
+    return { content: [{ type: "text", text: "Abort signal sent. Current slice will finish, then execution stops." }] };
+  }
+  return { content: [{ type: "text", text: "No active plan execution to abort." }] };
+}
+
+function _handlePlanStatus(args) {
+  try {
+    const cwd = args.path ? findProjectRoot(resolve(args.path)) : findProjectRoot(PROJECT_DIR);
+    const runsDir = resolve(cwd, ".forge", "runs");
+
+    if (!existsSync(runsDir)) {
+      return { content: [{ type: "text", text: "No runs found. Run `forge_run_plan` first." }] };
     }
-    return { content: [{ type: "text", text: "No active plan execution to abort." }] };
-  }
 
-  if (name === "forge_plan_status") {
-    try {
-      const cwd = args.path ? findProjectRoot(resolve(args.path)) : findProjectRoot(PROJECT_DIR);
-      const runsDir = resolve(cwd, ".forge", "runs");
+    const runDirs = readdirSync(runsDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort()
+      .reverse();
 
-      if (!existsSync(runsDir)) {
-        return { content: [{ type: "text", text: "No runs found. Run `forge_run_plan` first." }] };
-      }
-
-      const runDirs = readdirSync(runsDir, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name)
-        .sort()
-        .reverse();
-
-      if (runDirs.length === 0) {
-        return { content: [{ type: "text", text: "No runs found." }] };
-      }
-
-      // Find matching run (by plan name filter or latest)
-      let targetDir = runDirs[0];
-      if (args.plan) {
-        const planName = args.plan.replace(/\.md$/, "").split("/").pop();
-        // M1: Match plan name at end of directory name (after timestamp_) to avoid false positives
-        const match = runDirs.find((d) => d.endsWith(`_${planName}`) || d.endsWith(`_${planName}/`));
-        if (match) targetDir = match;
-      }
-
-      const summaryPath = resolve(runsDir, targetDir, "summary.json");
-      if (existsSync(summaryPath)) {
-        const summary = readFileSync(summaryPath, "utf-8");
-        return { content: [{ type: "text", text: summary }] };
-      }
-
-      // No summary yet — check run.json for in-progress
-      const runPath = resolve(runsDir, targetDir, "run.json");
-      if (existsSync(runPath)) {
-        const runMeta = readFileSync(runPath, "utf-8");
-        return { content: [{ type: "text", text: `Run in progress:\n${runMeta}` }] };
-      }
-
-      return { content: [{ type: "text", text: `Run directory exists but no data: ${targetDir}` }] };
-    } catch (err) {
-      return { content: [{ type: "text", text: `Status error: ${err.message}` }], isError: true };
+    if (runDirs.length === 0) {
+      return { content: [{ type: "text", text: "No runs found." }] };
     }
-  }
 
-  if (name === "forge_cost_report") {
-    try {
-      const cwd = args.path ? findProjectRoot(resolve(args.path)) : findProjectRoot(PROJECT_DIR);
-      const report = getCostReport(cwd);
-      return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
-    } catch (err) {
-      return { content: [{ type: "text", text: `Cost report error: ${err.message}` }], isError: true };
+    let targetDir = runDirs[0];
+    if (args.plan) {
+      const planName = args.plan.replace(/\.md$/, "").split("/").pop();
+      const match = runDirs.find((d) => d.endsWith(`_${planName}`) || d.endsWith(`_${planName}/`));
+      if (match) targetDir = match;
     }
-  }
 
-  // ─── Sync pforge tools ───
+    const summaryPath = resolve(runsDir, targetDir, "summary.json");
+    if (existsSync(summaryPath)) {
+      return { content: [{ type: "text", text: readFileSync(summaryPath, "utf-8") }] };
+    }
+
+    const runPath = resolve(runsDir, targetDir, "run.json");
+    if (existsSync(runPath)) {
+      return { content: [{ type: "text", text: `Run in progress:\n${readFileSync(runPath, "utf-8")}` }] };
+    }
+
+    return { content: [{ type: "text", text: `Run directory exists but no data: ${targetDir}` }] };
+  } catch (err) {
+    return { content: [{ type: "text", text: `Status error: ${err.message}` }], isError: true };
+  }
+}
+
+function _handleCostReport(args) {
+  try {
+    const cwd = args.path ? findProjectRoot(resolve(args.path)) : findProjectRoot(PROJECT_DIR);
+    return { content: [{ type: "text", text: JSON.stringify(getCostReport(cwd), null, 2) }] };
+  } catch (err) {
+    return { content: [{ type: "text", text: `Cost report error: ${err.message}` }], isError: true };
+  }
+}
+
+function _handleSyncTool(name, args) {
   const result = executeTool(name, args || {});
-
   return {
     content: [
       {
@@ -384,6 +371,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     ],
     isError: !result.success,
   };
+}
+
+const _ASYNC_TOOL_HANDLERS = {
+  forge_run_plan: _handleRunPlan,
+  forge_abort: _handleAbort,
+  forge_plan_status: _handlePlanStatus,
+  forge_cost_report: _handleCostReport,
+};
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  const asyncHandler = _ASYNC_TOOL_HANDLERS[name];
+  if (asyncHandler) {
+    return asyncHandler(args);
+  }
+
+  return _handleSyncTool(name, args);
 });
 
 // ─── Express App + REST API (Phase 4, C6) ─────────────────────────────

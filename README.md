@@ -193,7 +193,7 @@ cd pluck
 pip install -e .
 
 # Or run directly
-./src/gh_install.py install https://gitlab.com/user/project
+./src/pluck.py install https://gitlab.com/user/project
 ```
 
 ### Via pip
@@ -290,9 +290,9 @@ item that triggers this protocol call.
 ```
 pluck/
 ├── src/
-│   └── gh_install.py          # Main application (~1700 lines)
+│   └── pluck.py               # Main application (~2200 lines)
 ├── tests/
-│   └── test_gh_install.py     # Test suite (111 tests)
+│   └── test_pluck.py          # Test suite (111 tests)
 ├── assets/
 │   ├── images/                # Logo and illustrations
 │   └── browser-extension/     # Chrome/Chromium right-click extension
@@ -303,7 +303,7 @@ pluck/
 │   └── IMPLEMENTATION.md      # Implementation details
 ├── man/
 │   ├── pluck.1                # Man page
-│   └── gh-install.1           # Legacy man page
+│   └── gh-install.1           # Legacy man page (kept for backward compat)
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml             # CI: test + lint

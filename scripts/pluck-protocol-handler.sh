@@ -45,9 +45,11 @@ echo ""
 if command -v pluck &>/dev/null; then
     pluck install "$target_url"
 elif command -v gh-install &>/dev/null; then
-    gh-install install "$target_url"
+    gh-install install "$target_url"            # legacy compat alias
+elif [[ -f "$(dirname "$0")/../src/pluck.py" ]]; then
+    python3 "$(dirname "$0")/../src/pluck.py" install "$target_url"
 elif [[ -f "$(dirname "$0")/../src/gh_install.py" ]]; then
-    python3 "$(dirname "$0")/../src/gh_install.py" install "$target_url"
+    python3 "$(dirname "$0")/../src/gh_install.py" install "$target_url"  # legacy compat
 else
     echo "Error: pluck not found. Install it first: pip install pluck" >&2
     exit 1

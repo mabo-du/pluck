@@ -9,7 +9,7 @@ from unittest.mock import patch
 # Add src to path so we can import the module
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from gh_install import (
+from pluck import (
     SHARED_PATHS,
     VALID_METHODS,
     _detect_host_type,
@@ -386,7 +386,7 @@ class TestIsExecutable:
 
     def test_executable_file(self):
         f = self._make_file("script.sh")
-        os.chmod(f, 0o755)
+        os.chmod(f, 0o700)
         assert _is_executable(f) is True
 
     def test_non_executable_file_with_extension(self):
@@ -444,11 +444,12 @@ class TestParseArgs:
         assert urls == ["https://github.com/a/b"]
 
     def test_dir_flag(self):
+        tmpdir = tempfile.mkdtemp()
         (
             install_dir, dry_run, force, shallow, ref,
             method, json_output, verbose, no_color, timeout, retries, jobs, urls,
-        ) = _parse_args(["--dir", "/tmp/test", "https://github.com/a/b"])
-        assert install_dir == Path("/tmp/test")
+        ) = _parse_args(["--dir", tmpdir, "https://github.com/a/b"])
+        assert install_dir == Path(tmpdir)
         assert urls == ["https://github.com/a/b"]
 
     def test_dry_run_flag(self):
@@ -520,7 +521,7 @@ class TestParseArgs:
 
 
 class TestDryRun:
-    @patch("gh_install.parse_repo_url")
+    @patch("pluck.parse_repo_url")
     def test_dry_run_returns_path_without_cloning(self, mock_parse):
         mock_parse.return_value = {
             "host": "github.com",
@@ -566,31 +567,31 @@ class TestRegistryOperations:
         assert loaded["apps"]["myapp"]["url"] == "https://github.com/a/b"
 
     def test_register_app(self):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
 
-        register_app("testrepo", "https://github.com/a/b", Path("/tmp/test"), "python")
+        register_app("testrepo", "https://github.com/a/b", Path(self.tmp) / "test", "python")
 
         registry = load_registry()
         assert "testrepo" in registry["apps"]
         assert registry["apps"]["testrepo"]["url"] == "https://github.com/a/b"
         assert registry["apps"]["testrepo"]["method"] == "python"
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
     def test_uninstall_nonexistent_app(self):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry({"apps": {}})
 
         result = uninstall_app("nonexistent")
         assert result is False
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
 
 class TestUpdateApp:
@@ -601,10 +602,10 @@ class TestUpdateApp:
         self.install_dir.mkdir()
 
     def test_update_nonexistent_app(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry({"apps": {}})
 
         result = update_app("nonexistent")
@@ -613,13 +614,13 @@ class TestUpdateApp:
         captured = capsys.readouterr()
         assert "not installed" in captured.out.lower()
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
     def test_update_dry_run(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry(
             {
                 "apps": {
@@ -639,7 +640,7 @@ class TestUpdateApp:
         captured = capsys.readouterr()
         assert "DRY RUN" in captured.out
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
 
 class TestInfoApp:
@@ -652,10 +653,10 @@ class TestInfoApp:
         (self.install_dir / "myapp" / "file.txt").write_text("hello")
 
     def test_info_existing_app(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry(
             {
                 "apps": {
@@ -676,13 +677,13 @@ class TestInfoApp:
         assert "myapp" in captured.out
         assert "python" in captured.out
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
     def test_info_nonexistent_app(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry({"apps": {}})
 
         result = info_app("nonexistent")
@@ -691,7 +692,7 @@ class TestInfoApp:
         captured = capsys.readouterr()
         assert "not installed" in captured.out.lower()
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
 
 class TestDoctor:
@@ -711,23 +712,23 @@ class TestConfigCommand:
         self.config_file = Path(self.tmp) / "config.json"
 
     def test_config_show_all_empty(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.CONFIG_FILE
-        gh_install.CONFIG_FILE = self.config_file
+        original = pluck.CONFIG_FILE
+        pluck.CONFIG_FILE = self.config_file
 
         config_command()
 
         captured = capsys.readouterr()
         assert "No configuration set" in captured.out
 
-        gh_install.CONFIG_FILE = original
+        pluck.CONFIG_FILE = original
 
     def test_config_set_and_get(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.CONFIG_FILE
-        gh_install.CONFIG_FILE = self.config_file
+        original = pluck.CONFIG_FILE
+        pluck.CONFIG_FILE = self.config_file
 
         config_command("install_dir", "/opt/apps")
         captured = capsys.readouterr()
@@ -737,7 +738,7 @@ class TestConfigCommand:
         captured = capsys.readouterr()
         assert "/opt/apps" in captured.out
 
-        gh_install.CONFIG_FILE = original
+        pluck.CONFIG_FILE = original
 
 
 class TestExportImport:
@@ -747,10 +748,10 @@ class TestExportImport:
         self.export_file = Path(self.tmp) / "export.json"
 
     def test_export_registry(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry(
             {
                 "apps": {
@@ -771,13 +772,13 @@ class TestExportImport:
             data = json.load(f)
         assert "app1" in data["apps"]
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
     def test_import_registry(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry({"apps": {}})
 
         # Create export file
@@ -802,7 +803,7 @@ class TestExportImport:
         registry = load_registry()
         assert "app1" in registry["apps"]
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
     def test_import_nonexistent_file(self, capsys):
         result = import_registry("/nonexistent/file.json")
@@ -832,10 +833,10 @@ class TestVerifyApps:
         (self.install_dir / "existing-app" / "file.txt").write_text("data")
 
     def test_verify_all_valid(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry({
             "apps": {
                 "existing-app": {
@@ -854,13 +855,13 @@ class TestVerifyApps:
         assert "All" in captured.out
         assert "valid" in captured.out.lower()
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
     def test_verify_with_missing_app(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry({
             "apps": {
                 "missing-app": {
@@ -878,13 +879,13 @@ class TestVerifyApps:
         captured = capsys.readouterr()
         assert "missing" in captured.out.lower()
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
     def test_verify_json_output(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry({
             "apps": {
                 "existing-app": {
@@ -899,7 +900,7 @@ class TestVerifyApps:
         result = verify_apps(json_output=True)
         assert result is True
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
 
 class TestStatsCommand:
@@ -914,10 +915,10 @@ class TestStatsCommand:
         (self.install_dir / "app2" / "data.bin").write_text("y" * 1024)
 
     def test_stats_returns_with_output(self, capsys):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry({
             "apps": {
                 "app1": {
@@ -942,13 +943,13 @@ class TestStatsCommand:
         assert "python" in captured.out
         assert "node" in captured.out
 
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
     def test_stats_json_output(self):
-        import gh_install
+        import pluck
 
-        original = gh_install.APP_REGISTRY_FILE
-        gh_install.APP_REGISTRY_FILE = self.registry_file
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
         save_registry({
             "apps": {
                 "app1": {
@@ -961,7 +962,7 @@ class TestStatsCommand:
         })
 
         stats_command(json_output=True)
-        gh_install.APP_REGISTRY_FILE = original
+        pluck.APP_REGISTRY_FILE = original
 
 
 class TestFormatBytes:
@@ -1014,9 +1015,9 @@ class TestDownloadAndInstallMocked:
         self.tmp_clone = Path(tempfile.mkdtemp())
         self.tmp_install = Path(tempfile.mkdtemp())
 
-    @patch("gh_install.subprocess.run")
-    @patch("gh_install.tempfile.mkdtemp")
-    @patch("gh_install.parse_repo_url")
+    @patch("pluck.subprocess.run")
+    @patch("pluck.tempfile.mkdtemp")
+    @patch("pluck.parse_repo_url")
     def test_download_and_install_success(self, mock_parse, mock_mkdtemp, mock_run):
         """Test happy path with mocked subprocess."""
         mock_parse.return_value = {
@@ -1044,9 +1045,9 @@ class TestDownloadAndInstallMocked:
         first_call_args = mock_run.call_args_list[0][0][0]
         assert "clone" in first_call_args
 
-    @patch("gh_install.subprocess.run")
-    @patch("gh_install.tempfile.mkdtemp")
-    @patch("gh_install.parse_repo_url")
+    @patch("pluck.subprocess.run")
+    @patch("pluck.tempfile.mkdtemp")
+    @patch("pluck.parse_repo_url")
     def test_download_and_install_retry_on_failure(self, mock_parse, mock_mkdtemp, mock_run):
         """Test that clone retries on CalledProcessError."""
         mock_parse.return_value = {
@@ -1077,9 +1078,9 @@ class TestDownloadAndInstallMocked:
 
         assert mock_run.call_count >= 2
 
-    @patch("gh_install.subprocess.run")
-    @patch("gh_install.tempfile.mkdtemp")
-    @patch("gh_install.parse_repo_url")
+    @patch("pluck.subprocess.run")
+    @patch("pluck.tempfile.mkdtemp")
+    @patch("pluck.parse_repo_url")
     def test_download_and_install_invalid_url(self, mock_parse, mock_mkdtemp, mock_run):
         """Test that invalid URL returns None."""
         mock_parse.return_value = None
@@ -1087,9 +1088,9 @@ class TestDownloadAndInstallMocked:
         result = download_and_install("not-a-valid-url")
         assert result is None
 
-    @patch("gh_install.subprocess.run")
-    @patch("gh_install.tempfile.mkdtemp")
-    @patch("gh_install.parse_repo_url")
+    @patch("pluck.subprocess.run")
+    @patch("pluck.tempfile.mkdtemp")
+    @patch("pluck.parse_repo_url")
     def test_download_and_install_timeout_retry(self, mock_parse, mock_mkdtemp, mock_run):
         """Test that clone retries on TimeoutExpired."""
         import subprocess as sp
