@@ -55,6 +55,12 @@ SHARED_PATHS = {
 }
 VALID_METHODS = {"script", "binary", "python", "node", "go", "rust", "make", "download", "release"}
 GIST_PATTERN = r"gist\.github\.com[:/]([^/]+)/([a-f0-9]+)"
+# API endpoint constants
+_API_GITHUB_SEARCH = "https://api.github.com/search/repositories"
+_API_GITLAB_SEARCH = "https://gitlab.com/api/v4/projects"
+_API_CODEBERG_SEARCH = "https://codeberg.org/api/v1/repos/search"
+_API_BITBUCKET_SEARCH = "https://api.bitbucket.org/2.0/repositories"
+_API_GITLAB_RELEASES = "https://gitlab.com/api/v4/projects"
 # GitLab personal snippet: gitlab.com/-/snippets/12345
 # GitLab project snippet: gitlab.com/owner/repo/-/snippets/12345
 SNIPPET_PATTERNS = [
@@ -1034,7 +1040,7 @@ def search_github(query, limit=10, results=None):
     If results (list) is provided, appends result dicts instead of printing.
     """
     print(f"  Searching GitHub for '{query}'...")
-    url = f"https://api.github.com/search/repositories?q={urllib.parse.quote(query)}&sort=stars&order=desc&per_page={limit}"
+    url = f"{_API_GITHUB_SEARCH}?q={urllib.parse.quote(query)}&sort=stars&order=desc&per_page={limit}"
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
         with _safe_urlopen(req, timeout=10) as resp:
@@ -1076,7 +1082,7 @@ def search_github(query, limit=10, results=None):
 def search_gitlab(query, limit=10, collector=None):
     """Search repositories using the GitLab API."""
     print(f"  Searching GitLab for '{query}'...")
-    url = f"https://gitlab.com/api/v4/projects?search={urllib.parse.quote(query)}&per_page={limit}&order_by=stars&sort=desc"
+    url = f"{_API_GITLAB_SEARCH}?search={urllib.parse.quote(query)}&per_page={limit}&order_by=stars&sort=desc"
     # Note: GitLab search is unauthenticated but rate-limited (600 req/h per IP)
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
@@ -1129,7 +1135,7 @@ def search_gitlab(query, limit=10, collector=None):
 def search_codeberg(query, limit=10, results=None):
     """Search repositories using the Codeberg (Gitea/Forgejo) API."""
     print(f"  Searching Codeberg for '{query}'...")
-    url = f"https://codeberg.org/api/v1/repos/search?q={urllib.parse.quote(query)}&limit={limit}&sort=stars"
+    url = f"{_API_CODEBERG_SEARCH}?q={urllib.parse.quote(query)}&limit={limit}&sort=stars"
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with _safe_urlopen(req, timeout=10) as resp:
@@ -1184,7 +1190,7 @@ def _bitbucket_repo_url(repo):
 def search_bitbucket(query, limit=10, results=None):
     """Search repositories using the Bitbucket Cloud API."""
     print(f"  Searching Bitbucket for '{query}'...")
-    url = f'https://api.bitbucket.org/2.0/repositories?q=name~"{urllib.parse.quote(query)}"&sort=-updated_on'
+    url = f'{_API_BITBUCKET_SEARCH}?q=name~"{urllib.parse.quote(query)}"&sort=-updated_on'
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with _safe_urlopen(req, timeout=10) as resp:
@@ -1499,7 +1505,7 @@ def _try_int(ctx, attr, val):
     try:
         setattr(ctx, attr, int(val))
     except ValueError:
-        pass  # non-integer flag value — leave default
+        return  # non-integer flag value — leave default
 
 
 def _try_int_val(val, default):
@@ -1608,17 +1614,7 @@ def stats_command(json_output=False):
 
         if install_path.exists():
             valid += 1
-            try:
-                if install_path.is_file():
-                    total_size += install_path.stat().st_size
-                elif install_path.is_dir():
-                    for dirpath, _, filenames in os.walk(install_path):
-                        for f in filenames:
-                            fp = os.path.join(dirpath, f)
-                            if not os.path.islink(fp):
-                                total_size += os.path.getsize(fp)
-            except OSError:
-                pass  # skip inaccessible files in size calculation
+            total_size += _safe_dir_size(install_path)
         else:
             orphaned += 1
 
@@ -1647,6 +1643,27 @@ def stats_command(json_output=False):
     print(f"  {Colors.CYAN}By Method:{Colors.END}")
     for method, count in sorted(method_counts.items(), key=lambda x: -x[1]):
         print(f"    {method:<10} {count}")
+
+
+def _safe_dir_size(path):
+    """Calculate disk size of path, returning 0 on inaccessible paths."""
+    try:
+        if path.is_file():
+            return path.stat().st_size
+        if path.is_dir():
+            total = 0
+            for dirpath, _, filenames in os.walk(path):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    if not os.path.islink(fp):
+                        try:
+                            total += os.path.getsize(fp)
+                        except OSError:
+                            continue  # skip inaccessible files
+            return total
+        return 0
+    except OSError:
+        return 0
 
 
 def _format_bytes(size):
@@ -1688,7 +1705,7 @@ def _migrate_old_registry():
             _CONFIG_OLD_REGISTRY.unlink()
             print_warning("Migrated registry from .gh-install-registry.json to .pluck-registry.json")
         except OSError:
-            pass  # migration is best-effort — old file may already be gone
+            print_warning("Could not migrate old .gh-install-registry.json (may already be gone)")
     if _CONFIG_OLD_DIR.exists() and not CONFIG_FILE.exists():
         try:
             config_data = _CONFIG_OLD_DIR / "config.json"
@@ -1698,7 +1715,7 @@ def _migrate_old_registry():
                 _CONFIG_OLD_DIR.rmdir()
                 print_warning("Migrated config from ~/.config/gh-install/ to ~/.config/pluck/")
         except OSError:
-            pass  # migration is best-effort — old dir may already be gone
+            print_warning("Could not migrate old ~/.config/gh-install directory (may already be gone)")
 
 
 # ── Pin / Unpin ──
@@ -1977,7 +1994,7 @@ def _gitlab_release_url(repo_info, install_dir):
     repo = repo_info["repo"]
     # GitLab generic packages API
     encoded = urllib.parse.quote(owner + "/" + repo, safe="")
-    api_url = f"https://gitlab.com/api/v4/projects/{encoded}/releases/permalink/latest"
+    api_url = f"{_API_GITLAB_RELEASES}/{encoded}/releases/permalink/latest"
     try:
         req = urllib.request.Request(api_url, headers={"Accept": "application/json", "User-Agent": "pluck"})
         with _safe_urlopen(req, timeout=15) as resp:
