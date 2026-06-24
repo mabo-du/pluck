@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-06-24
+
+### Changed
+- **Renamed project from `gh-install` to `pluck` everywhere**: source file, test file, module names, pyproject.toml entry points (with backward-compat shim) — `src/gh_install.py` → `src/pluck.py`, `tests/test_gh_install.py` → `tests/test_pluck.py`
+
+### Added
+- `_safe_urlopen()` — URL scheme validation helper that blocks `file://` / custom scheme abuse (resolves 8 CodeFactor security issues)
+- `_check_install_method()` — extracted method-detection checks for reduced complexity
+- `_clone_repo()` — extracted clone logic with retry/timeout handling
+- `_safe_dir_size()` — robust directory size calculation with per-file error handling
+- `_bitbucket_repo_url()` — safe Bitbucket URL extraction helper
+- API endpoint constants (`_API_GITHUB_SEARCH`, `_API_GITLAB_SEARCH`, `_API_CODEBERG_SEARCH`, `_API_BITBUCKET_SEARCH`, `_API_GITLAB_RELEASES`)
+- `opencode.md` — project context file for AI tooling with verification commands and off-limits paths
+
+### Fixed
+- **Security**: 8 CodeFactor URL scheme audit issues — all `urllib.request.urlopen()` calls now use `_safe_urlopen()` which restricts to `https://` / `http://` only
+- **Code quality**: 4 complex method refactorings — `detect_install_method()`, `download_and_install()`, `_parse_args()`, `main()` all broken into smaller functions with dispatch tables
+- **Code quality**: 1 complex method in `pforge-mcp/server.mjs` — extracted 4 handler functions from the `CallToolRequestSchema` handler
+- **Code quality**: Extracted `createExpressApp()` REST route handlers
+- **Code quality**: Reduced `_clone_repo` parameter count from 8 to 7 (removed unused `install_dir`)
+- **Security**: Changed test chmod from `0o755` to `0o700` (less permissive)
+- **Security**: Replaced hardcoded `/tmp/test` paths with `tempfile`-based paths in tests
+- **22 aislop auto-fixes**: removed unused imports, narrative comments, and formatting issues
+- **4 bare except-with-pass**: added proper error messages or restructured to avoid silent swallows
+- **3 chained dict `.get()` calls**: normalized with explicit helper functions
+
+### Infrastructure
+- **Cross-platform release workflow**: PyInstaller binaries for Linux, macOS, and Windows
+- **CI/CD**: All 11 GitHub Actions pinned to immutable SHAs for supply-chain security
+- **Gitignore**: Added patterns for `.env*`, `.charter/`, `.claude/local/`, `.cursor/cache/`, `.hk/`, `docs/plans/`
+- **Quality gates**: Added `aislop scan` and `charter doctor` compliance improvements
+
 ## [0.3.2] - 2026-06-12
 
 ### Fixed
