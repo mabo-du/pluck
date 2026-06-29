@@ -47,4 +47,4 @@ or use `xpinstall.signatures.required = false` in `about:config`.
 |------|---------|
 | `manifest.json` | Extension manifest (Chrome/Chromium MV3) |
 | `background.js` | Context menu handler |
-| `icon.png` | Extension icon (not yet provided) |
+| `icon.png` | Extension icon |

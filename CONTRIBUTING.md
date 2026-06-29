@@ -31,22 +31,22 @@ All changes should include tests. The test suite lives in `tests/`:
 python -m pytest tests/ -v
 
 # Run a specific test class
-python -m pytest tests/test_gh_install.py::TestParseRepoUrl -v
+python -m pytest tests/test_pluck.py::TestParseRepoUrl -v
 
 # Run with coverage
 pip install pytest-cov
-python -m pytest tests/ --cov=gh_install --cov-report=term-missing
+python -m pytest tests/ --cov=pluck --cov-report=term-missing
 ```
 
 ### Adding New Install Methods
 
 To add support for a new install method:
 
-1. Add detection logic to `detect_install_method()` in `src/gh_install.py`
+1. Add detection logic to `detect_install_method()` in `src/pluck.py`
 2. Create an `install_<method>()` function that takes `(repo_path, install_dir)` and returns the installed path (or `None` on failure)
 3. Wrap subprocess calls in try/except and return `None` on failure
 4. Add the method to the `install_funcs` dict in `download_and_install()`
-5. Add tests for detection in `tests/test_gh_install.py`
+5. Add tests for detection in `tests/test_pluck.py`
 
 ### Commit Messages
 

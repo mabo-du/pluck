@@ -74,3 +74,4 @@ docs/plans/
 
 # ── Environment files (local overrides, not templates) ──
 .env*
+.pr/

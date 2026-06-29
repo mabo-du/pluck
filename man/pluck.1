@@ -1,4 +1,4 @@
-.TH PLUCK 1 "May 2026" "pluck 0.2.0" "User Commands"
+.TH PLUCK 1 "June 2026" "pluck 0.4.0" "User Commands"
 .SH NAME
 pluck \- Pluck git repos from any forge, auto-install
 .SH SYNOPSIS
@@ -53,6 +53,18 @@ Import registry from a JSON file.
 .B completion <shell>
 Generate shell completion script (bash/zsh).
 .TP
+.B pin <name>
+Pin an app to prevent updates.
+.TP
+.B unpin <name>
+Unpin an app.
+.TP
+.B self-update
+Update pluck via PyPI.
+.TP
+.B cache <prune|path>
+Manage the download cache.
+.TP
 .B version
 Show version.
 .TP
@@ -92,6 +104,15 @@ Timeout for git clone in seconds.
 .TP
 .B --retries <n>
 Number of retries for failed git clone.
+.TP
+.B --jobs <n>
+Number of parallel installs (default: 1).
+.TP
+.B --release
+Install from pre-built release assets instead of cloning.
+.TP
+.B --verbose
+Show detailed git clone output.
 .SH FILES
 .TP
 .B ~/.pluck-registry.json

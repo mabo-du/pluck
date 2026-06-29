@@ -26,13 +26,25 @@ if [[ -z "$input" ]]; then
     exit 1
 fi
 
-# If input is a pluck:// URL, extract the actual git URL
+# If input is a pluck:// URL, extract the actual git URL using Python's
+# urllib.parse for correct query-string handling. A naive sed substitution
+# would include trailing &key=value params in the URL (see CVE-style bug).
 if [[ "$input" == pluck://* ]]; then
-    # Extract the url parameter
-    raw_url=$(echo "$input" | sed 's/^pluck:\/\/install?url=//')
-    # URL-decode
-    decoded_url=$(printf '%b' "${raw_url//%/\\x}" 2>/dev/null || echo "$raw_url")
-    target_url="$decoded_url"
+    target_url=$(python3 - "$input" <<'PY'
+import sys
+import urllib.parse
+
+url = sys.argv[1]
+parsed = urllib.parse.urlparse(url)
+# pluck://install?url=... — query is in parsed.query
+qs = urllib.parse.parse_qs(parsed.query)
+urls = qs.get("url")
+if not urls:
+    sys.stderr.write("Error: no 'url' parameter in pluck:// URL\n")
+    sys.exit(1)
+print(urls[0])
+PY
+    )
 else
     # Plain git URL — use directly (handy for quick use)
     target_url="$input"

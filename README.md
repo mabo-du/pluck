@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white" alt="Python 3.8+">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT">
   <img src="https://img.shields.io/badge/Dependencies-Zero-brightgreen" alt="Zero dependencies">
-  <img src="https://img.shields.io/badge/Tests-111%20passing-brightgreen" alt="111 passing tests">
+  <img src="https://img.shields.io/badge/Tests-128%20passing-brightgreen" alt="128 passing tests">
   <img src="https://img.shields.io/badge/Forges-11%20supported-blue" alt="11 forges supported">
   <img src="https://img.shields.io/badge/PyPI-pluck--cli-blue?logo=pypi" alt="PyPI: pluck-cli">
   <img src="https://img.shields.io/badge/Code%20style-ruff-EF5552" alt="Code style: ruff">
@@ -290,12 +290,13 @@ item that triggers this protocol call.
 ```
 pluck/
 ├── src/
-│   └── pluck.py               # Main application (~2200 lines)
+│   ├── pluck.py                # Main application (~2400 lines)
+│   └── gh_install.py           # Backward-compat alias (imports pluck)
 ├── tests/
-│   └── test_pluck.py          # Test suite (111 tests)
+│   └── test_pluck.py           # Test suite (128 tests)
 ├── assets/
-│   ├── images/                # Logo and illustrations
-│   └── browser-extension/     # Chrome/Chromium right-click extension
+│   ├── images/                 # Logo and illustrations
+│   └── browser-extension/      # Chrome/Chromium right-click extension
 ├── scripts/
 │   ├── pluck-protocol-handler.sh    # pluck:// URL handler
 │   └── install-protocol-handler.sh  # Protocol registration
@@ -306,8 +307,7 @@ pluck/
 │   └── gh-install.1           # Legacy man page (kept for backward compat)
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml             # CI: test + lint
-│       └── publish-pypi.yml   # PyPI publish
+│       └── release.yml        # Build wheel + binaries, publish to PyPI + GitHub Releases
 ├── README.md                  # This file
 ├── CHANGELOG.md               # Version history
 ├── CONTRIBUTING.md            # Developer guide
@@ -339,7 +339,7 @@ pre-commit install
 ### Test Coverage
 
 ```
-111 tests passing across 24 test classes:
+128 tests passing across 30 test classes:
 ├── TestParseRepoUrl (22 tests)
 ├── TestGistUrl (7 tests) — includes GitLab snippets
 ├── TestDetectInstallMethod (17 tests)
@@ -360,7 +360,14 @@ pre-commit install
 ├── TestStatsCommand (2 tests)
 ├── TestFormatBytes (5 tests)
 ├── TestExtractGlobalFlags (5 tests)
-└── TestDownloadAndInstallMocked (4 tests)
+├── TestDownloadAndInstallMocked (4 tests)
+├── TestParseArgsMissingFlagValue (6 tests) — regression: flags with missing values
+├── TestRegistryAtomicWrite (3 tests) — regression: atomic writes + locking
+├── TestInstallPythonSymlink (1 test) — regression: symlink bug that crashed on entry-point scripts
+├── TestSafeTarMembers (1 test) — regression: CVE-2007-4559 tarball path traversal
+├── TestProtocolHandlerUrlParsing (4 tests) — regression: multi-param URL parsing
+├── TestReleaseInstallFallback (1 test) — regression: --release fallback to clone
+└── TestInstallMakeFallback (1 test) — regression: uncaught CalledProcessError on make failure
 ```
 
 

@@ -4,6 +4,56 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- **Bug**: `install_python` symlink logic attempted to `unlink()` the non-empty `app_dir` directory when an entry-point script matched the repo name, causing `IsADirectoryError`. Symlinks are now created at `install_dir/bin/<name>` instead.
+- **Bug**: `_try_release_install` claimed to "fall back to clone" but actually returned `None`, causing `pluck install --method release` to silently fail when no release assets were available. The fallback is now real.
+- **Bug**: `install_make` could raise an uncaught `CalledProcessError` when the fallback `make` invocation failed. It now returns `None` like the other installers.
+- **Bug**: `scripts/pluck-protocol-handler.sh` used a naive `sed` to extract the `url` query param, which appended trailing `&key=value` parameters to the target URL. Rewritten to use Python's `urllib.parse` for correct query-string handling.
+- **Bug**: `Dockerfile` only copied `src/gh_install.py` (a `from pluck import *` shim), so the Docker build failed because `pluck.py` was missing. Now copies both files.
+- **Bug**: `_parse_args` silently treated flags missing their value (e.g. `pluck install --dir` with no value) as URLs, producing confusing "Invalid repository URL: --dir" errors. Now raises a friendly `ValueError`.
+- **Bug**: `_extract_global_flags` documented a 3-tuple return but only returned 2 values (`no_color` was computed but discarded). Now actually returns `(cleaned_args, json_output, no_color)`.
+- **Bug**: `search_gitlab` used `collector=` parameter name, inconsistent with the `results=` convention used by the other searchers. Renamed to `results=`.
+- **Bug**: `search_codeberg` had a redundant `ok` flag check (the second branch was dead code). Consolidated.
+- **Bug**: `cache_command` used an awkward `CACHE_DIR.rmdir() if CACHE_DIR.exists() else None` ternary that could crash on a non-empty directory. Now uses a try/except.
+- **Bug**: `install_release_asset` would attempt to fetch releases for gists/snippets (which have `host_type=github/gitlab` but no releases API). Now explicitly skips them.
+- **Security**: `tarfile.extractall()` was called without `filter='data'`, allowing path-traversal in malicious tarballs (CVE-2007-4559 family). Now uses `filter='data'` on Python 3.12+ and a custom `_safe_tar_members()` filter on older versions. Zip extraction is also sanitized.
+- **Security**: `save_registry` was non-atomic; a crash mid-write could corrupt `~/.pluck-registry.json`. Now writes to a temp file and renames into place.
+- **Security**: `register_app` performed an unsynchronized read-modify-write, allowing `--jobs > 1` parallel installs to lose each other's entries. Now holds an `fcntl.flock` advisory lock for the full read-modify-write.
+- **Robustness**: `load_registry` would crash on a corrupt registry file. Now logs a warning and returns a fresh empty registry.
+
+### Changed
+- `requires-python` bumped from `>=3.6` to `>=3.8` to match the documented Python requirement (3.6 is EOL).
+- `pyproject.toml` classifiers updated to drop Python 3.6/3.7.
+
+### Removed
+- `pforge-mcp/` directory — belonged to the unrelated "Plan Forge" project (https://github.com/srnichols/plan-forge) and referenced files that don't exist in this repo (`./orchestrator.mjs`, `./hub.mjs`).
+- `docs/COPILOT-VSCODE-GUIDE.md` — also from "Plan Forge", not relevant to pluck.
+- `charter.yaml` — referenced `use-charter.dev` schema, unrelated to pluck.
+
+### Added
+- `_safe_tar_members()` helper for path-traversal-safe tar extraction on Python < 3.12.
+- `_with_registry_lock()` context manager for advisory-file-lock-based serialization.
+- `ARCHITECTURE.md` — filled in the previous stub with overview, layout, data flow, concurrency model, and security posture.
+- 17 new regression tests in `tests/test_pluck.py`:
+  - `TestParseArgsMissingFlagValue` (6 tests)
+  - `TestRegistryAtomicWrite` (3 tests)
+  - `TestInstallPythonSymlink` (1 test)
+  - `TestSafeTarMembers` (1 test)
+  - `TestProtocolHandlerUrlParsing` (4 tests)
+  - `TestReleaseInstallFallback` (1 test)
+  - `TestInstallMakeFallback` (1 test)
+
+### Documentation
+- `README.md`: corrected test count (111→128), removed references to nonexistent `ci.yml`/`publish-pypi.yml` workflows, removed "coming soon" note for the browser extension (it already exists), updated line count (2200→2400).
+- `docs/IMPLEMENTATION.md`: rewrote to reflect current state (2400 lines, 19 commands, 128 tests, 30 test classes, registry locking, security notes).
+- `CONTRIBUTING.md`: updated file references (`test_gh_install.py` → `test_pluck.py`, `gh_install` → `pluck`).
+- `man/pluck.1`: updated version (0.2.0 → 0.4.0), added missing `pin`/`unpin`/`self-update`/`cache` commands and `--jobs`/`--release`/`--verbose` flags.
+- `HomebrewFormula/pluck-cli.rb`: updated URL version (0.2.0 → 0.4.0).
+- `assets/browser-extension/README.md`: removed "icon not yet provided" note (icon.png exists).
+- `scripts/install-protocol-handler.sh`: removed "coming soon" note for the browser extension.
+
 ## [0.4.0] - 2026-06-24
 
 ### Changed
