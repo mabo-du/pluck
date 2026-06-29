@@ -29,8 +29,19 @@ fi
 # If input is a pluck:// URL, extract the actual git URL using Python's
 # urllib.parse for correct query-string handling. A naive sed substitution
 # would include trailing &key=value params in the URL (see CVE-style bug).
+# Fall back to shell-based parsing if no Python interpreter is available
+# (the shell-based version is best-effort and may include trailing params).
 if [[ "$input" == pluck://* ]]; then
-    target_url=$(python3 - "$input" <<'PY'
+    if command -v python3 &>/dev/null; then
+        PY_BIN=python3
+    elif command -v python &>/dev/null; then
+        PY_BIN=python
+    else
+        PY_BIN=""
+    fi
+
+    if [[ -n "$PY_BIN" ]]; then
+        target_url=$("$PY_BIN" - "$input" <<'PY'
 import sys
 import urllib.parse
 
@@ -44,7 +55,22 @@ if not urls:
     sys.exit(1)
 print(urls[0])
 PY
-    )
+        )
+    else
+        # No Python interpreter — fall back to shell-based parsing.
+        # Best-effort: strips the prefix, URL-decodes, and truncates at
+        # the first & to drop extra query params.
+        raw_url="${input#pluck://install?url=}"
+        # URL-decode %XX sequences using printf
+        decoded_url=$(printf '%b' "${raw_url//%/\\x}" 2>/dev/null || echo "$raw_url")
+        # Truncate at first & to drop extra query params
+        target_url="${decoded_url%%&*}"
+        if [[ -z "$target_url" ]]; then
+            echo "Error: no 'url' parameter in pluck:// URL" >&2
+            exit 1
+        fi
+        echo "Warning: python3 not found, using shell-based URL parsing (best-effort)" >&2
+    fi
 else
     # Plain git URL — use directly (handy for quick use)
     target_url="$input"

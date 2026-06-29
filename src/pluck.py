@@ -514,8 +514,17 @@ def install_python(repo_path, install_dir):
             bin_dir = install_dir / "bin"
             bin_dir.mkdir(parents=True, exist_ok=True)
             link_path = bin_dir / repo_path.name
-            if link_path.is_symlink() or link_path.exists():
+            # Only unlink files and symlinks — never directories. A directory
+            # at this path is almost certainly user-created and we should not
+            # blow it away silently.
+            if link_path.is_symlink() or (link_path.exists() and link_path.is_file()):
                 link_path.unlink()
+            elif link_path.is_dir():
+                print_warning(
+                    f"Skipping symlink creation: {link_path} is a directory "
+                    f"(not overwriting)"
+                )
+                return app_dir
             link_path.symlink_to(entry_point)
             print_success(f"Created symlink: {link_path} → {entry_point}")
 
@@ -864,13 +873,14 @@ def update_app(
     retries=0,
 ):
     """Update an installed application"""
-    registry = load_registry()
+    # Read the current entry under the lock so we get a consistent snapshot.
+    with _with_registry_lock():
+        registry = load_registry()
+        if repo_name not in registry["apps"]:
+            print_error(f"{repo_name} is not installed")
+            return False
+        app_info = registry["apps"][repo_name].copy()
 
-    if repo_name not in registry["apps"]:
-        print_error(f"{repo_name} is not installed")
-        return False
-
-    app_info = registry["apps"][repo_name]
     url = app_info["url"]
     old_path = Path(app_info["path"])
 
@@ -900,10 +910,16 @@ def update_app(
         else:
             shutil.rmtree(old_path, ignore_errors=True)
 
-    del registry["apps"][repo_name]
-    save_registry(registry)
+    # Remove the old registry entry under the lock so concurrent operations
+    # don't see a half-deleted state. The re-install itself runs unlocked
+    # (download_and_install acquires its own lock when calling register_app).
+    with _with_registry_lock():
+        registry = load_registry()
+        if repo_name in registry["apps"]:
+            del registry["apps"][repo_name]
+            save_registry(registry)
 
-    # Re-install
+    # Re-install (unlocked — register_app will lock when it writes the new entry)
     target_dir = old_path.parent if old_path.parent.exists() else install_dir
     result = download_and_install(
         url,
@@ -919,9 +935,11 @@ def update_app(
         return True
     else:
         print_error(f"Failed to update {repo_name}")
-        # Restore old registry entry
-        registry["apps"][repo_name] = app_info
-        save_registry(registry)
+        # Restore old registry entry under the lock
+        with _with_registry_lock():
+            registry = load_registry()
+            registry["apps"][repo_name] = app_info
+            save_registry(registry)
         return False
 
 
@@ -1265,16 +1283,17 @@ def import_registry(filepath):
         print_error("Invalid registry file format")
         return False
 
-    registry = load_registry()
-    imported = 0
-    for name, info in data["apps"].items():
-        if name not in registry["apps"]:
-            registry["apps"][name] = info
-            imported += 1
-        else:
-            print_warning(f"Skipping {name} (already installed)")
+    with _with_registry_lock():
+        registry = load_registry()
+        imported = 0
+        for name, info in data["apps"].items():
+            if name not in registry["apps"]:
+                registry["apps"][name] = info
+                imported += 1
+            else:
+                print_warning(f"Skipping {name} (already installed)")
 
-    save_registry(registry)
+        save_registry(registry)
     print_success(f"Imported {imported} new apps")
     return True
 
@@ -1329,46 +1348,47 @@ def _run_post_install_hook(repo_name, install_path, method):
 
 def clean_registry(dry_run=False, force=False, json_output=False):
     """Remove orphaned registry entries (apps whose paths no longer exist)"""
-    registry = load_registry()
-    orphaned = []
+    with _with_registry_lock():
+        registry = load_registry()
+        orphaned = []
 
-    for name, info in registry["apps"].items():
-        install_path = Path(info["path"])
-        if not install_path.exists():
-            orphaned.append({"name": name, "path": info["path"]})
+        for name, info in registry["apps"].items():
+            install_path = Path(info["path"])
+            if not install_path.exists():
+                orphaned.append({"name": name, "path": info["path"]})
 
-    if not orphaned:
-        if json_output:
-            print(json.dumps({"orphaned": []}))
-        else:
-            print_success("No orphaned entries found")
-        return 0
-
-    if json_output:
-        data = {"orphaned": orphaned, "count": len(orphaned)}
-        if dry_run:
-            data["dry_run"] = True
-        print(json.dumps(data, indent=2))
-        return len(orphaned)
-
-    print_header(f"Found {len(orphaned)} orphaned entries")
-    for entry in orphaned:
-        print(f"  {Colors.RED}{entry['name']}{Colors.END} — {entry['path']} (missing)")
-
-    if dry_run:
-        print(f"\n  {Colors.YELLOW}[DRY RUN] Would remove {len(orphaned)} entries{Colors.END}")
-        return len(orphaned)
-
-    if not force:
-        confirm = input(f"\nRemove {len(orphaned)} orphaned entries? [y/N]: ")
-        if confirm.lower() != "y":
-            print("Cancelled")
+        if not orphaned:
+            if json_output:
+                print(json.dumps({"orphaned": []}))
+            else:
+                print_success("No orphaned entries found")
             return 0
 
-    for entry in orphaned:
-        del registry["apps"][entry["name"]]
+        if json_output:
+            data = {"orphaned": orphaned, "count": len(orphaned)}
+            if dry_run:
+                data["dry_run"] = True
+            print(json.dumps(data, indent=2))
+            return len(orphaned)
 
-    save_registry(registry)
+        print_header(f"Found {len(orphaned)} orphaned entries")
+        for entry in orphaned:
+            print(f"  {Colors.RED}{entry['name']}{Colors.END} — {entry['path']} (missing)")
+
+        if dry_run:
+            print(f"\n  {Colors.YELLOW}[DRY RUN] Would remove {len(orphaned)} entries{Colors.END}")
+            return len(orphaned)
+
+        if not force:
+            confirm = input(f"\nRemove {len(orphaned)} orphaned entries? [y/N]: ")
+            if confirm.lower() != "y":
+                print("Cancelled")
+                return 0
+
+        for entry in orphaned:
+            del registry["apps"][entry["name"]]
+
+        save_registry(registry)
     print_success(f"Removed {len(orphaned)} orphaned entries")
     return len(orphaned)
 
@@ -1397,12 +1417,21 @@ def save_registry(registry):
     """
     APP_REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp_file = APP_REGISTRY_FILE.with_suffix(".tmp")
-    with open(tmp_file, "w") as f:
-        json.dump(registry, f, indent=2)
     try:
-        os.replace(tmp_file, APP_REGISTRY_FILE)
+        with open(tmp_file, "w") as f:
+            json.dump(registry, f, indent=2)
+        try:
+            os.replace(tmp_file, APP_REGISTRY_FILE)
+        except OSError:
+            # Atomic rename failed (e.g. cross-device). Fall back to a direct
+            # write and clean up the temp file so it doesn't accumulate.
+            APP_REGISTRY_FILE.write_text(json.dumps(registry, indent=2))
+            try:
+                tmp_file.unlink()
+            except OSError:
+                pass
     except OSError:
-        # Last-resort fallback if atomic rename fails (e.g. cross-device).
+        # Couldn't even create the temp file — last-resort direct write.
         APP_REGISTRY_FILE.write_text(json.dumps(registry, indent=2))
 
 
@@ -1482,37 +1511,38 @@ def list_installed(json_output=False):
 
 def uninstall_app(repo_name, force=False):
     """Uninstall an application"""
-    registry = load_registry()
+    with _with_registry_lock():
+        registry = load_registry()
 
-    if repo_name not in registry["apps"]:
-        print_error(f"{repo_name} is not installed")
-        return False
-
-    app_info = registry["apps"][repo_name]
-
-    # Ask for confirmation
-    if not force:
-        confirm = input(f"Uninstall {repo_name}? [y/N]: ")
-        if confirm.lower() != "y":
-            print("Cancelled")
+        if repo_name not in registry["apps"]:
+            print_error(f"{repo_name} is not installed")
             return False
 
-    # Remove installed files — but never delete shared system directories
-    install_path = Path(app_info["path"])
-    resolved_shared_paths = {p.resolve() for p in SHARED_PATHS}
-    if install_path.resolve() in resolved_shared_paths or install_path.resolve() == Path.home().resolve():
-        print_error(f"Refusing to uninstall: {install_path} is a shared directory")
-        print_warning("Remove files from this directory manually instead")
-        return False
+        app_info = registry["apps"][repo_name]
 
-    if install_path.exists():
-        if install_path.is_file():
-            install_path.unlink()
-        else:
-            shutil.rmtree(install_path, ignore_errors=True)
+        # Ask for confirmation
+        if not force:
+            confirm = input(f"Uninstall {repo_name}? [y/N]: ")
+            if confirm.lower() != "y":
+                print("Cancelled")
+                return False
 
-    del registry["apps"][repo_name]
-    save_registry(registry)
+        # Remove installed files — but never delete shared system directories
+        install_path = Path(app_info["path"])
+        resolved_shared_paths = {p.resolve() for p in SHARED_PATHS}
+        if install_path.resolve() in resolved_shared_paths or install_path.resolve() == Path.home().resolve():
+            print_error(f"Refusing to uninstall: {install_path} is a shared directory")
+            print_warning("Remove files from this directory manually instead")
+            return False
+
+        if install_path.exists():
+            if install_path.is_file():
+                install_path.unlink()
+            else:
+                shutil.rmtree(install_path, ignore_errors=True)
+
+        del registry["apps"][repo_name]
+        save_registry(registry)
 
     print_success(f"Uninstalled {repo_name}")
     return True
@@ -1804,24 +1834,26 @@ def _migrate_old_registry():
 
 def pin_app(repo_name):
     """Pin an app to prevent updates."""
-    registry = load_registry()
-    if repo_name not in registry["apps"]:
-        print_error(f"{repo_name} is not installed")
-        return False
-    registry["apps"][repo_name]["pinned"] = True
-    save_registry(registry)
+    with _with_registry_lock():
+        registry = load_registry()
+        if repo_name not in registry["apps"]:
+            print_error(f"{repo_name} is not installed")
+            return False
+        registry["apps"][repo_name]["pinned"] = True
+        save_registry(registry)
     print_success(f"Pinned {repo_name}")
     return True
 
 
 def unpin_app(repo_name):
     """Unpin an app."""
-    registry = load_registry()
-    if repo_name not in registry["apps"]:
-        print_error(f"{repo_name} is not installed")
-        return False
-    registry["apps"][repo_name]["pinned"] = False
-    save_registry(registry)
+    with _with_registry_lock():
+        registry = load_registry()
+        if repo_name not in registry["apps"]:
+            print_error(f"{repo_name} is not installed")
+            return False
+        registry["apps"][repo_name]["pinned"] = False
+        save_registry(registry)
     print_success(f"Unpinned {repo_name}")
     return True
 
@@ -1993,18 +2025,29 @@ def _safe_tar_members(tar):
     Used as a fallback on Python < 3.12 where tarfile.extractall(filter=...) is
     not available. Mirrors the protections of filter='data' for the path-traversal
     case (CVE-2007-4559).
+
+    Backslashes in member names are normalized to forward slashes before
+    checking, because on Unix a backslash is a valid filename character — so
+    `foo\\..\\..\\bar` would bypass a naive `Path(..).parts` check that
+    only looks for `..` segments split by the OS path separator.
     """
     for member in tar.getmembers():
-        member_path = Path(member.name)
+        # Normalize backslashes so the path-traversal check works on Unix
+        # (where backslashes are literal filename characters, not separators).
+        sanitized_name = member.name.replace("\\", "/")
+        member_path = Path(sanitized_name)
         if member_path.is_absolute() or ".." in member_path.parts:
             print_warning(f"Skipping unsafe tar entry: {member.name}")
             continue
+        member.name = sanitized_name
         # Reject symlinks/hardlinks that point outside the extract dir
         if member.issym() or member.islnk():
-            link_path = Path(member.linkname)
+            sanitized_linkname = member.linkname.replace("\\", "/")
+            link_path = Path(sanitized_linkname)
             if link_path.is_absolute() or ".." in link_path.parts:
                 print_warning(f"Skipping unsafe tar link: {member.name} -> {member.linkname}")
                 continue
+            member.linkname = sanitized_linkname
         yield member
 
 
@@ -2089,11 +2132,16 @@ def _github_release_url(repo_info, install_dir):
         extract_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(dest) as zf:
             # Sanitize member paths to prevent path traversal (zip-slip).
+            # Backslashes are normalized to forward slashes before checking
+            # because on Unix a backslash is a literal filename character —
+            # `foo\..\..\bar` would otherwise bypass the `..` check.
             for member in zf.infolist():
-                member_path = Path(member.filename)
+                sanitized_filename = member.filename.replace("\\", "/")
+                member_path = Path(sanitized_filename)
                 if member_path.is_absolute() or ".." in member_path.parts:
                     print_warning(f"Skipping unsafe zip entry: {member.filename}")
                     continue
+                member.filename = sanitized_filename
                 zf.extract(member, extract_dir)
         print_success(f"Extracted to {extract_dir}")
         return extract_dir

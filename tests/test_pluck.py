@@ -31,10 +31,12 @@ from pluck import (
     install_python,
     load_registry,
     parse_repo_url,
+    pin_app,
     register_app,
     save_registry,
     stats_command,
     uninstall_app,
+    unpin_app,
     update_app,
     verify_apps,
 )
@@ -1352,6 +1354,62 @@ class TestRegistryAtomicWrite:
         finally:
             pluck.APP_REGISTRY_FILE = original
 
+    def test_uninstall_app_acquires_lock(self):
+        """uninstall_app should use the registry lock (regression: it used
+        to do an unsynchronized read-modify-write that could lose entries
+        under --jobs parallelism).
+        """
+        import pluck
+
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
+        try:
+            # Seed registry with an app whose install path doesn't exist
+            # (so uninstall doesn't try to delete anything).
+            save_registry({
+                "apps": {
+                    "ghost": {
+                        "url": "https://github.com/a/ghost",
+                        "path": "/nonexistent/ghost",
+                        "method": "script",
+                        "installed_at": "now",
+                    }
+                }
+            })
+            result = uninstall_app("ghost", force=True)
+            assert result is True
+            lock_file = self.registry_file.with_suffix(".lock")
+            assert lock_file.exists()
+            # The app should be gone from the registry.
+            assert "ghost" not in load_registry()["apps"]
+        finally:
+            pluck.APP_REGISTRY_FILE = original
+
+    def test_pin_unpin_acquires_lock(self):
+        """pin_app and unpin_app should both use the registry lock."""
+        import pluck
+
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
+        try:
+            register_app("foo", "https://github.com/a/foo",
+                         Path("/tmp/foo"), "script")
+            lock_file = self.registry_file.with_suffix(".lock")
+
+            # Clear the lock file timestamp to verify it's touched again.
+            from time import sleep
+            sleep(0.05)
+            pin_app("foo")
+            assert lock_file.exists()
+            assert load_registry()["apps"]["foo"]["pinned"] is True
+
+            sleep(0.05)
+            unpin_app("foo")
+            assert lock_file.exists()
+            assert load_registry()["apps"]["foo"]["pinned"] is False
+        finally:
+            pluck.APP_REGISTRY_FILE = original
+
 
 class TestInstallPythonSymlink:
     """Regression test: install_python used to try to unlink app_dir (a
@@ -1397,6 +1455,50 @@ myapp = "myapp:main"
         # The original app_dir should still be a directory (not replaced).
         assert (install_dir / "myapp").is_dir()
 
+    def test_install_python_skips_symlink_when_target_is_directory(self, capsys):
+        """If a directory already exists at install_dir/bin/<name>, the
+        symlink logic must NOT call unlink() on it (which would raise
+        IsADirectoryError). It should warn and skip instead.
+        """
+        tmp_repo = Path(tempfile.mkdtemp()) / "myapp"
+        tmp_repo.mkdir(parents=True)
+        (tmp_repo / "pyproject.toml").write_text(
+            """
+[project]
+name = "myapp"
+version = "0.0.1"
+[project.scripts]
+myapp = "myapp:main"
+"""
+        )
+        (tmp_repo / "myapp.py").write_text("def main(): pass\n")
+
+        install_dir = Path(tempfile.mkdtemp())
+
+        # Pre-create a directory at the symlink target path.
+        blocking_dir = install_dir / "bin" / "myapp"
+        blocking_dir.mkdir(parents=True)
+        # Put a file in it so we can verify it's not deleted.
+        (blocking_dir / "important.txt").write_text("user data")
+
+        # Pre-create the venv entry-point so the symlink code path triggers.
+        venv_bin = install_dir / "myapp" / ".venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "myapp").write_text("#!/bin/sh\n")
+
+        with patch("pluck.subprocess.run") as mock_run:
+            mock_run.return_value = None
+            result = install_python(tmp_repo, install_dir)
+
+        # Should not crash, should return app_dir.
+        assert result is not None
+        # The user's directory and its contents must be preserved.
+        assert blocking_dir.is_dir()
+        assert (blocking_dir / "important.txt").exists()
+        # A warning should have been printed.
+        captured = capsys.readouterr()
+        assert "directory" in captured.out.lower()
+
 
 class TestSafeTarMembers:
     """Regression test for CVE-2007-4559 (tarball path traversal)."""
@@ -1428,6 +1530,37 @@ class TestSafeTarMembers:
         names = [m.name for m in members]
         assert "safe.txt" in names
         assert all(".." not in n for n in names)
+
+    def test_safe_tar_members_rejects_backslash_traversal(self):
+        """Names with backslash path traversal (foo\\..\\..\\bar) should be
+        filtered out — on Unix a backslash is a literal filename character,
+        so a naive check that only looks for '..' split by the OS separator
+        would be bypassed.
+        """
+        import io
+        import tarfile
+
+        import pluck
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            info = tarfile.TarInfo("safe.txt")
+            info.size = 4
+            tar.addfile(info, io.BytesIO(b"data"))
+            # Backslash-based traversal — would bypass Path("..").parts check
+            # on Unix without backslash normalization.
+            info = tarfile.TarInfo("foo\\..\\..\\evil.txt")
+            info.size = 4
+            tar.addfile(info, io.BytesIO(b"evil"))
+
+        buf.seek(0)
+        with tarfile.open(fileobj=buf) as tar:
+            members = list(pluck._safe_tar_members(tar))
+
+        names = [m.name for m in members]
+        assert "safe.txt" in names
+        # The backslash-traversal entry must not appear.
+        assert all("evil" not in n for n in names)
 
 
 class TestProtocolHandlerUrlParsing:

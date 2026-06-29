@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (code review follow-ups)
+- **Security**: Backslash-based path traversal bypass in `_safe_tar_members` and zip extraction — on Unix, backslashes are valid filename characters, so `foo\..\..\bar` would bypass the `..` check that uses `Path.parts`. Backslashes are now normalized to forward slashes before checking, and the member name is updated in place.
+- **Bug**: `install_python` symlink logic could still raise `IsADirectoryError` if a directory existed at `install_dir/bin/<name>` (e.g. user-created). Now checks `is_file()`/`is_symlink()` before unlinking and warns + skips if the target is a directory.
+- **Bug**: Protocol handler hard-depended on `python3` after the URL-parsing rewrite. Now probes for `python3` then `python` then falls back to a shell-based best-effort parser that truncates at the first `&`.
+- **Bug**: `save_registry` leaked the `.tmp` file when `os.replace` failed and the direct-write fallback was used. The temp file is now cleaned up in the error path.
+- **Concurrency**: `uninstall_app`, `pin_app`, `unpin_app`, `clean_registry`, `import_registry`, and `update_app` now all acquire the registry advisory lock for their read-modify-write sequences (previously only `register_app` was locked). This closes the race condition that `--jobs > 1` parallel operations could still trigger via these functions.
+
+### Added (tests)
+- `test_safe_tar_members_rejects_backslash_traversal` — regression for the backslash bypass.
+- `test_install_python_skips_symlink_when_target_is_directory` — regression for the symlink-dir guard.
+- `test_uninstall_app_acquires_lock` — verifies `uninstall_app` holds the registry lock.
+- `test_pin_unpin_acquires_lock` — verifies `pin_app`/`unpin_app` hold the registry lock.
+- Total: 132 tests passing (up from 128).
+
 ### Fixed
 - **Bug**: `install_python` symlink logic attempted to `unlink()` the non-empty `app_dir` directory when an entry-point script matched the repo name, causing `IsADirectoryError`. Symlinks are now created at `install_dir/bin/<name>` instead.
 - **Bug**: `_try_release_install` claimed to "fall back to clone" but actually returned `None`, causing `pluck install --method release` to silently fail when no release assets were available. The fallback is now real.
