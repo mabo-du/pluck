@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-30
+
 ### Fixed (code review follow-ups)
 - **Security**: Backslash-based path traversal bypass in `_safe_tar_members` and zip extraction — on Unix, backslashes are valid filename characters, so `foo\..\..\bar` would bypass the `..` check that uses `Path.parts`. Backslashes are now normalized to forward slashes before checking, and the member name is updated in place.
 - **Bug**: `install_python` symlink logic could still raise `IsADirectoryError` if a directory existed at `install_dir/bin/<name>` (e.g. user-created). Now checks `is_file()`/`is_symlink()` before unlinking and warns + skips if the target is a directory.

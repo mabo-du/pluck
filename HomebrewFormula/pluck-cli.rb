@@ -9,7 +9,7 @@ class PluckCli < Formula
 
   desc "Pluck git repos from any forge — auto-detect, auto-install, done!"
   homepage "https://gitlab.com/mabodu/pluck"
-  url "https://files.pythonhosted.org/packages/source/p/pluck-cli/pluck_cli-0.4.0.tar.gz"
+  url "https://files.pythonhosted.org/packages/source/p/pluck-cli/pluck_cli-0.5.0.tar.gz"
   license "MIT"
 
   depends_on "python@3.12"
