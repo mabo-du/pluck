@@ -27,12 +27,12 @@ Do not modify without explicit human approval:
 
 - `.github/workflows/` — CI/CD pipeline definitions
 - `pyproject.toml` — build configuration and entry points
-- `src/gh_install.py` — backward-compat shim (managed by rename process)
+- `src/gh_install.py` — backward-compat shim (`from pluck import *`)
 - `docs/IMPLEMENTATION.md` — architecture documentation
 - `CHANGELOG.md` — version history (managed by semantic-release)
 
 ## Key files
 
 - `src/pluck.py` — main application
-- `tests/test_pluck.py` — test suite (111+ tests)
+- `tests/test_pluck.py` — test suite (128 tests)
 - `pyproject.toml` — build config, entry points, lint settings

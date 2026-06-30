@@ -505,14 +505,28 @@ def install_python(repo_path, install_dir):
 
         print_success(f"Installed to {app_dir}")
 
-        if (venv_path / "bin" / repo_path.name).exists():
-            bin_file = venv_path / "bin" / repo_path.name
-            link_path = install_dir / repo_path.name
-            if link_path.exists() or link_path.is_symlink():
+        # If the package installed a console-script entry point with the same
+        # name as the repo, expose it as a sibling symlink in install_dir/bin/.
+        # (Previously this tried to unlink app_dir itself, which is a non-empty
+        # directory — causing IsADirectoryError whenever an entry point existed.)
+        entry_point = venv_path / "bin" / repo_path.name
+        if entry_point.exists():
+            bin_dir = install_dir / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            link_path = bin_dir / repo_path.name
+            # Only unlink files and symlinks — never directories. A directory
+            # at this path is almost certainly user-created and we should not
+            # blow it away silently.
+            if link_path.is_symlink() or (link_path.exists() and link_path.is_file()):
                 link_path.unlink()
-            link_path.symlink_to(bin_file)
-            print_success(f"Created symlink: {link_path}")
-            return app_dir
+            elif link_path.is_dir():
+                print_warning(
+                    f"Skipping symlink creation: {link_path} is a directory "
+                    f"(not overwriting)"
+                )
+                return app_dir
+            link_path.symlink_to(entry_point)
+            print_success(f"Created symlink: {link_path} → {entry_point}")
 
         return app_dir
     except subprocess.CalledProcessError as e:
@@ -632,7 +646,12 @@ def install_make(repo_path, install_dir):
         print_success(f"Installed to {install_dir}")
         return install_dir
     except subprocess.CalledProcessError:
-        subprocess.run(["make"], cwd=repo_path, check=True)
+        # 'make install' failed — try a plain 'make' build, then copy binaries.
+        try:
+            subprocess.run(["make"], cwd=repo_path, check=True)
+        except subprocess.CalledProcessError as e:
+            print_error(f"Make build failed: {e}")
+            return None
         return install_binary(repo_path, install_dir)
 
 
@@ -779,7 +798,13 @@ def download_and_install(
 
     # If release method requested, skip cloning and try release assets
     if method_override == "release":
-        return _try_release_install(repo_info, repo_url, install_dir, safe_name, dry_run)
+        release_result = _try_release_install(repo_info, repo_url, install_dir, safe_name, dry_run)
+        if release_result is not None:
+            return release_result
+        # Release asset install failed — fall back to a normal clone+install
+        # so the user doesn't have to re-run without --release.
+        print_warning("Falling back to clone+install...")
+        method_override = None
 
     # Dry-run check before doing any I/O
     if dry_run:
@@ -819,7 +844,11 @@ def download_and_install(
 
 
 def _try_release_install(repo_info, repo_url, install_dir, safe_name, dry_run):
-    """Try installing from release assets (called when method_override == 'release')."""
+    """Try installing from release assets (called when method_override == 'release').
+
+    Returns the installed path on success, or None on failure (caller is
+    expected to fall back to a normal clone+install).
+    """
     if dry_run:
         print(f"  [DRY RUN] Would install release assets for: {repo_info['owner']}/{repo_info['repo']}")
         return install_dir / safe_name
@@ -830,7 +859,6 @@ def _try_release_install(repo_info, repo_url, install_dir, safe_name, dry_run):
         register_app(repo_info["repo"], repo_url, installed_path, "release")
         _print_summary(repo_info["repo"], "release", installed_path)
         return installed_path
-    print_warning("Release asset install failed, falling back to clone...")
     return None
 
 
@@ -845,13 +873,14 @@ def update_app(
     retries=0,
 ):
     """Update an installed application"""
-    registry = load_registry()
+    # Read the current entry under the lock so we get a consistent snapshot.
+    with _with_registry_lock():
+        registry = load_registry()
+        if repo_name not in registry["apps"]:
+            print_error(f"{repo_name} is not installed")
+            return False
+        app_info = registry["apps"][repo_name].copy()
 
-    if repo_name not in registry["apps"]:
-        print_error(f"{repo_name} is not installed")
-        return False
-
-    app_info = registry["apps"][repo_name]
     url = app_info["url"]
     old_path = Path(app_info["path"])
 
@@ -881,10 +910,16 @@ def update_app(
         else:
             shutil.rmtree(old_path, ignore_errors=True)
 
-    del registry["apps"][repo_name]
-    save_registry(registry)
+    # Remove the old registry entry under the lock so concurrent operations
+    # don't see a half-deleted state. The re-install itself runs unlocked
+    # (download_and_install acquires its own lock when calling register_app).
+    with _with_registry_lock():
+        registry = load_registry()
+        if repo_name in registry["apps"]:
+            del registry["apps"][repo_name]
+            save_registry(registry)
 
-    # Re-install
+    # Re-install (unlocked — register_app will lock when it writes the new entry)
     target_dir = old_path.parent if old_path.parent.exists() else install_dir
     result = download_and_install(
         url,
@@ -900,9 +935,11 @@ def update_app(
         return True
     else:
         print_error(f"Failed to update {repo_name}")
-        # Restore old registry entry
-        registry["apps"][repo_name] = app_info
-        save_registry(registry)
+        # Restore old registry entry under the lock
+        with _with_registry_lock():
+            registry = load_registry()
+            registry["apps"][repo_name] = app_info
+            save_registry(registry)
         return False
 
 
@@ -1079,7 +1116,7 @@ def search_github(query, limit=10, results=None):
             )
 
 
-def search_gitlab(query, limit=10, collector=None):
+def search_gitlab(query, limit=10, results=None):
     """Search repositories using the GitLab API."""
     print(f"  Searching GitLab for '{query}'...")
     url = f"{_API_GITLAB_SEARCH}?search={urllib.parse.quote(query)}&per_page={limit}&order_by=stars&sort=desc"
@@ -1096,11 +1133,11 @@ def search_gitlab(query, limit=10, collector=None):
         print_warning("No results found")
         return
 
-    results = []
+    parsed = []
     for project in data:
         # GitLab returns projects ordered by last_activity by default;
         # sort with our own star sort since we requested order_by=stars
-        results.append(
+        parsed.append(
             {
                 "name": project.get("path_with_namespace", project["path"]),
                 "description": project.get("description") or "No description",
@@ -1110,11 +1147,11 @@ def search_gitlab(query, limit=10, collector=None):
             }
         )
 
-    results.sort(key=lambda r: r["stars"], reverse=True)
+    parsed.sort(key=lambda r: r["stars"], reverse=True)
 
-    if collector is not None:
-        for i, r in enumerate(results[:limit], 1):
-            collector.append(
+    if results is not None:
+        for i, r in enumerate(parsed[:limit], 1):
+            results.append(
                 {
                     "index": i,
                     "name": r["name"],
@@ -1125,8 +1162,8 @@ def search_gitlab(query, limit=10, collector=None):
                 }
             )
     else:
-        print_header(f"GitLab Results — '{query}' ({len(results)} found)")
-        for i, r in enumerate(results[:limit], 1):
+        print_header(f"GitLab Results — '{query}' ({len(parsed)} found)")
+        for i, r in enumerate(parsed[:limit], 1):
             _search_print_result(
                 i, r["name"], r["description"], r["stars"], r["language"], r["url"], star_char="\u2605"
             )
@@ -1144,11 +1181,8 @@ def search_codeberg(query, limit=10, results=None):
         print_error(f"Search failed: {e}")
         return
 
+    # Codeberg returns either a list (legacy) or {"data": [...], "ok": true}.
     items = data.get("data", []) if isinstance(data, dict) else data
-    if not items or (isinstance(data, dict) and data.get("ok") is False):
-        print_warning("No results found")
-        return
-
     ok_flag = data.get("ok", True) if isinstance(data, dict) else True
     if not ok_flag or not items:
         print_warning("No results found")
@@ -1249,34 +1283,39 @@ def import_registry(filepath):
         print_error("Invalid registry file format")
         return False
 
-    registry = load_registry()
-    imported = 0
-    for name, info in data["apps"].items():
-        if name not in registry["apps"]:
-            registry["apps"][name] = info
-            imported += 1
-        else:
-            print_warning(f"Skipping {name} (already installed)")
+    with _with_registry_lock():
+        registry = load_registry()
+        imported = 0
+        for name, info in data["apps"].items():
+            if name not in registry["apps"]:
+                registry["apps"][name] = info
+                imported += 1
+            else:
+                print_warning(f"Skipping {name} (already installed)")
 
-    save_registry(registry)
+        save_registry(registry)
     print_success(f"Imported {imported} new apps")
     return True
 
 
 def register_app(repo_name, repo_url, install_path, install_method, skip_hook=False):
-    """Register an installed application"""
+    """Register an installed application.
 
-    registry = load_registry()
-
-    registry["apps"][repo_name] = {
+    Holds the registry lock for the full read-modify-write so parallel
+    installs (via --jobs) can't lose each other's entries.
+    """
+    new_entry = {
         "url": repo_url,
         "path": str(install_path),
         "method": install_method,
         "pinned": False,
         "installed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+    with _with_registry_lock():
+        registry = load_registry()
+        registry["apps"][repo_name] = new_entry
+        save_registry(registry)
 
-    save_registry(registry)
     print_success(f"Registered {repo_name}")
 
     if not skip_hook:
@@ -1309,46 +1348,47 @@ def _run_post_install_hook(repo_name, install_path, method):
 
 def clean_registry(dry_run=False, force=False, json_output=False):
     """Remove orphaned registry entries (apps whose paths no longer exist)"""
-    registry = load_registry()
-    orphaned = []
+    with _with_registry_lock():
+        registry = load_registry()
+        orphaned = []
 
-    for name, info in registry["apps"].items():
-        install_path = Path(info["path"])
-        if not install_path.exists():
-            orphaned.append({"name": name, "path": info["path"]})
+        for name, info in registry["apps"].items():
+            install_path = Path(info["path"])
+            if not install_path.exists():
+                orphaned.append({"name": name, "path": info["path"]})
 
-    if not orphaned:
-        if json_output:
-            print(json.dumps({"orphaned": []}))
-        else:
-            print_success("No orphaned entries found")
-        return 0
-
-    if json_output:
-        data = {"orphaned": orphaned, "count": len(orphaned)}
-        if dry_run:
-            data["dry_run"] = True
-        print(json.dumps(data, indent=2))
-        return len(orphaned)
-
-    print_header(f"Found {len(orphaned)} orphaned entries")
-    for entry in orphaned:
-        print(f"  {Colors.RED}{entry['name']}{Colors.END} — {entry['path']} (missing)")
-
-    if dry_run:
-        print(f"\n  {Colors.YELLOW}[DRY RUN] Would remove {len(orphaned)} entries{Colors.END}")
-        return len(orphaned)
-
-    if not force:
-        confirm = input(f"\nRemove {len(orphaned)} orphaned entries? [y/N]: ")
-        if confirm.lower() != "y":
-            print("Cancelled")
+        if not orphaned:
+            if json_output:
+                print(json.dumps({"orphaned": []}))
+            else:
+                print_success("No orphaned entries found")
             return 0
 
-    for entry in orphaned:
-        del registry["apps"][entry["name"]]
+        if json_output:
+            data = {"orphaned": orphaned, "count": len(orphaned)}
+            if dry_run:
+                data["dry_run"] = True
+            print(json.dumps(data, indent=2))
+            return len(orphaned)
 
-    save_registry(registry)
+        print_header(f"Found {len(orphaned)} orphaned entries")
+        for entry in orphaned:
+            print(f"  {Colors.RED}{entry['name']}{Colors.END} — {entry['path']} (missing)")
+
+        if dry_run:
+            print(f"\n  {Colors.YELLOW}[DRY RUN] Would remove {len(orphaned)} entries{Colors.END}")
+            return len(orphaned)
+
+        if not force:
+            confirm = input(f"\nRemove {len(orphaned)} orphaned entries? [y/N]: ")
+            if confirm.lower() != "y":
+                print("Cancelled")
+                return 0
+
+        for entry in orphaned:
+            del registry["apps"][entry["name"]]
+
+        save_registry(registry)
     print_success(f"Removed {len(orphaned)} orphaned entries")
     return len(orphaned)
 
@@ -1356,16 +1396,72 @@ def clean_registry(dry_run=False, force=False, json_output=False):
 def load_registry():
     """Load the app registry"""
     if APP_REGISTRY_FILE.exists():
-        with open(APP_REGISTRY_FILE) as f:
-            return json.load(f)
+        try:
+            with open(APP_REGISTRY_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            # Corrupt or unreadable registry — start fresh rather than crash.
+            print_warning(f"Registry at {APP_REGISTRY_FILE} was unreadable, starting fresh")
+            return {"apps": {}}
 
     return {"apps": {}}
 
 
 def save_registry(registry):
-    """Save the app registry"""
-    with open(APP_REGISTRY_FILE, "w") as f:
-        json.dump(registry, f, indent=2)
+    """Save the app registry atomically.
+
+    Writes to a sibling temp file and renames into place so a crash mid-write
+    can't leave a half-written registry. Concurrent read-modify-write
+    sequences should be wrapped in `_with_registry_lock()` to avoid losing
+    entries when multiple writers race.
+    """
+    APP_REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp_file = APP_REGISTRY_FILE.with_suffix(".tmp")
+    try:
+        with open(tmp_file, "w") as f:
+            json.dump(registry, f, indent=2)
+        try:
+            os.replace(tmp_file, APP_REGISTRY_FILE)
+        except OSError:
+            # Atomic rename failed (e.g. cross-device). Fall back to a direct
+            # write and clean up the temp file so it doesn't accumulate.
+            APP_REGISTRY_FILE.write_text(json.dumps(registry, indent=2))
+            try:
+                tmp_file.unlink()
+            except OSError:
+                pass
+    except OSError:
+        # Couldn't even create the temp file — last-resort direct write.
+        APP_REGISTRY_FILE.write_text(json.dumps(registry, indent=2))
+
+
+def _with_registry_lock():
+    """Context manager that acquires the registry advisory lock for the
+    duration of a read-modify-write sequence. Yields nothing useful.
+
+    Falls back to a no-op on platforms without fcntl (e.g. Windows).
+    """
+    import contextlib
+
+    try:
+        import fcntl
+    except ImportError:
+        # No fcntl (Windows) — return a no-op context manager.
+        return contextlib.nullcontext()
+
+    APP_REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = APP_REGISTRY_FILE.with_suffix(".lock")
+
+    @contextlib.contextmanager
+    def _cm():
+        with open(lock_file, "w") as lf:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+
+    return _cm()
 
 
 def list_installed(json_output=False):
@@ -1415,37 +1511,38 @@ def list_installed(json_output=False):
 
 def uninstall_app(repo_name, force=False):
     """Uninstall an application"""
-    registry = load_registry()
+    with _with_registry_lock():
+        registry = load_registry()
 
-    if repo_name not in registry["apps"]:
-        print_error(f"{repo_name} is not installed")
-        return False
-
-    app_info = registry["apps"][repo_name]
-
-    # Ask for confirmation
-    if not force:
-        confirm = input(f"Uninstall {repo_name}? [y/N]: ")
-        if confirm.lower() != "y":
-            print("Cancelled")
+        if repo_name not in registry["apps"]:
+            print_error(f"{repo_name} is not installed")
             return False
 
-    # Remove installed files — but never delete shared system directories
-    install_path = Path(app_info["path"])
-    resolved_shared_paths = {p.resolve() for p in SHARED_PATHS}
-    if install_path.resolve() in resolved_shared_paths or install_path.resolve() == Path.home().resolve():
-        print_error(f"Refusing to uninstall: {install_path} is a shared directory")
-        print_warning("Remove files from this directory manually instead")
-        return False
+        app_info = registry["apps"][repo_name]
 
-    if install_path.exists():
-        if install_path.is_file():
-            install_path.unlink()
-        else:
-            shutil.rmtree(install_path, ignore_errors=True)
+        # Ask for confirmation
+        if not force:
+            confirm = input(f"Uninstall {repo_name}? [y/N]: ")
+            if confirm.lower() != "y":
+                print("Cancelled")
+                return False
 
-    del registry["apps"][repo_name]
-    save_registry(registry)
+        # Remove installed files — but never delete shared system directories
+        install_path = Path(app_info["path"])
+        resolved_shared_paths = {p.resolve() for p in SHARED_PATHS}
+        if install_path.resolve() in resolved_shared_paths or install_path.resolve() == Path.home().resolve():
+            print_error(f"Refusing to uninstall: {install_path} is a shared directory")
+            print_warning("Remove files from this directory manually instead")
+            return False
+
+        if install_path.exists():
+            if install_path.is_file():
+                install_path.unlink()
+            else:
+                shutil.rmtree(install_path, ignore_errors=True)
+
+        del registry["apps"][repo_name]
+        save_registry(registry)
 
     print_success(f"Uninstalled {repo_name}")
     return True
@@ -1472,7 +1569,11 @@ class _ParseContext:
 
 
 def _parse_flag(flag, ctx, args, i):
-    """Handle a single CLI flag. Returns the updated index."""
+    """Handle a single CLI flag. Returns the updated index.
+
+    Raises ValueError if a flag that requires a value (e.g. --dir) is at the
+    end of the arg list with no value following it.
+    """
     handlers = {
         "--dir": lambda: setattr(ctx, "install_dir", Path(args[i + 1]).expanduser()) or i + 2,
         "--dry-run": lambda: setattr(ctx, "dry_run", True) or i + 1,
@@ -1489,7 +1590,9 @@ def _parse_flag(flag, ctx, args, i):
         "--jobs": lambda: setattr(ctx, "jobs", max(1, _try_int_val(args[i + 1], 1))) or i + 2,
     }
     handler = handlers.get(flag)
-    if handler and i + _flag_arg_count(flag) < len(args):
+    if handler:
+        if i + _flag_arg_count(flag) >= len(args):
+            raise ValueError(f"Flag {flag} requires a value but none was provided")
         return handler()
     ctx.urls.append(args[i])
     return i + 1
@@ -1517,7 +1620,10 @@ def _try_int_val(val, default):
 
 
 def _parse_args(args):
-    """Parse all CLI flags from a list of arguments."""
+    """Parse all CLI flags from a list of arguments.
+
+    Raises ValueError if a flag requiring a value is missing its value.
+    """
     ctx = _ParseContext()
     i = 0
     while i < len(args):
@@ -1678,7 +1784,12 @@ def _format_bytes(size):
 
 
 def _extract_global_flags(args):
-    """Extract global flags (--json, --no-color) from an arg list, returning (cleaned_args, json_output, no_color)."""
+    """Extract global flags (--json, --no-color) from an arg list.
+
+    Returns a tuple of (cleaned_args, json_output, no_color). The no_color
+    side effect (_enable_colors(False)) is applied inside this function so
+    callers don't need to do anything extra.
+    """
     json_output = False
     no_color = False
     cleaned = []
@@ -1693,7 +1804,7 @@ def _extract_global_flags(args):
         i += 1
     if no_color:
         _enable_colors(False)
-    return cleaned, json_output
+    return cleaned, json_output, no_color
 
 
 def _migrate_old_registry():
@@ -1723,24 +1834,26 @@ def _migrate_old_registry():
 
 def pin_app(repo_name):
     """Pin an app to prevent updates."""
-    registry = load_registry()
-    if repo_name not in registry["apps"]:
-        print_error(f"{repo_name} is not installed")
-        return False
-    registry["apps"][repo_name]["pinned"] = True
-    save_registry(registry)
+    with _with_registry_lock():
+        registry = load_registry()
+        if repo_name not in registry["apps"]:
+            print_error(f"{repo_name} is not installed")
+            return False
+        registry["apps"][repo_name]["pinned"] = True
+        save_registry(registry)
     print_success(f"Pinned {repo_name}")
     return True
 
 
 def unpin_app(repo_name):
     """Unpin an app."""
-    registry = load_registry()
-    if repo_name not in registry["apps"]:
-        print_error(f"{repo_name} is not installed")
-        return False
-    registry["apps"][repo_name]["pinned"] = False
-    save_registry(registry)
+    with _with_registry_lock():
+        registry = load_registry()
+        if repo_name not in registry["apps"]:
+            print_error(f"{repo_name} is not installed")
+            return False
+        registry["apps"][repo_name]["pinned"] = False
+        save_registry(registry)
     print_success(f"Unpinned {repo_name}")
     return True
 
@@ -1762,7 +1875,12 @@ def cache_command(action):
             elif entry.is_dir():
                 total += sum(f.stat().st_size for f in entry.rglob("*") if f.is_file())
                 shutil.rmtree(entry, ignore_errors=True)
-        CACHE_DIR.rmdir() if CACHE_DIR.exists() else None
+        # Remove the now-empty cache directory itself (best-effort).
+        try:
+            CACHE_DIR.rmdir()
+        except OSError:
+            # Directory not empty (race) or already gone — non-fatal.
+            pass
         print_success(f"Cleared cache ({_format_bytes(total)})")
         return True
     elif action == "path":
@@ -1901,6 +2019,38 @@ def search_all_forges(query, limit=5, output_file=None):
 # ── Release Asset Install ──
 
 
+def _safe_tar_members(tar):
+    """Yield tar members that are safe to extract (no path traversal, no absolute paths).
+
+    Used as a fallback on Python < 3.12 where tarfile.extractall(filter=...) is
+    not available. Mirrors the protections of filter='data' for the path-traversal
+    case (CVE-2007-4559).
+
+    Backslashes in member names are normalized to forward slashes before
+    checking, because on Unix a backslash is a valid filename character — so
+    `foo\\..\\..\\bar` would bypass a naive `Path(..).parts` check that
+    only looks for `..` segments split by the OS path separator.
+    """
+    for member in tar.getmembers():
+        # Normalize backslashes so the path-traversal check works on Unix
+        # (where backslashes are literal filename characters, not separators).
+        sanitized_name = member.name.replace("\\", "/")
+        member_path = Path(sanitized_name)
+        if member_path.is_absolute() or ".." in member_path.parts:
+            print_warning(f"Skipping unsafe tar entry: {member.name}")
+            continue
+        member.name = sanitized_name
+        # Reject symlinks/hardlinks that point outside the extract dir
+        if member.issym() or member.islnk():
+            sanitized_linkname = member.linkname.replace("\\", "/")
+            link_path = Path(sanitized_linkname)
+            if link_path.is_absolute() or ".." in link_path.parts:
+                print_warning(f"Skipping unsafe tar link: {member.name} -> {member.linkname}")
+                continue
+            member.linkname = sanitized_linkname
+        yield member
+
+
 def _github_release_url(repo_info, install_dir):
     """Try to download a pre-built release asset from GitHub."""
     owner = repo_info["owner"]
@@ -1965,7 +2115,14 @@ def _github_release_url(repo_info, install_dir):
         extract_dir = install_dir / repo
         extract_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(dest) as tar:
-            tar.extractall(extract_dir)
+            # Use filter='data' on Python 3.12+ to prevent path traversal
+            # (CVE-2007-4559). On older Pythons, fall back to a sanitizing filter.
+            try:
+                tar.extractall(extract_dir, filter="data")
+            except TypeError:
+                # Python < 3.12 — no filter= argument. Apply a manual sanitizing
+                # filter that strips absolute paths and parent-dir traversals.
+                tar.extractall(extract_dir, members=_safe_tar_members(tar))
         print_success(f"Extracted to {extract_dir}")
         return extract_dir
     elif best["name"].endswith(".zip"):
@@ -1974,7 +2131,18 @@ def _github_release_url(repo_info, install_dir):
         extract_dir = install_dir / repo
         extract_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(dest) as zf:
-            zf.extractall(extract_dir)
+            # Sanitize member paths to prevent path traversal (zip-slip).
+            # Backslashes are normalized to forward slashes before checking
+            # because on Unix a backslash is a literal filename character —
+            # `foo\..\..\bar` would otherwise bypass the `..` check.
+            for member in zf.infolist():
+                sanitized_filename = member.filename.replace("\\", "/")
+                member_path = Path(sanitized_filename)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    print_warning(f"Skipping unsafe zip entry: {member.filename}")
+                    continue
+                member.filename = sanitized_filename
+                zf.extract(member, extract_dir)
         print_success(f"Extracted to {extract_dir}")
         return extract_dir
     else:
@@ -2039,6 +2207,11 @@ def _gitlab_release_url(repo_info, install_dir):
 
 def install_release_asset(repo_info, install_dir):
     """Install from pre-built release assets instead of cloning."""
+    # Gists and snippets carry host_type=github/gitlab but have no releases API
+    # — skip silently and let the caller fall back to a clone.
+    if repo_info.get("is_gist"):
+        print_warning("Release assets are not available for gists/snippets")
+        return None
     host_type = repo_info.get("host_type", "")
     if host_type == "github":
         return _github_release_url(repo_info, install_dir)
@@ -2157,7 +2330,7 @@ def _cmd_update():
 
 def _cmd_info():
     """Handle 'info' command."""
-    rest, json_output = _extract_global_flags(sys.argv[2:])
+    rest, json_output, _no_color = _extract_global_flags(sys.argv[2:])
     if not rest:
         print_error("Please provide an app name")
         sys.exit(1)
@@ -2166,7 +2339,7 @@ def _cmd_info():
 
 def _cmd_list():
     """Handle 'list' command."""
-    _, json_output = _extract_global_flags(sys.argv[2:])
+    _, json_output, _no_color = _extract_global_flags(sys.argv[2:])
     list_installed(json_output=json_output)
 
 
@@ -2196,7 +2369,7 @@ def _cmd_uninstall():
 
 def _cmd_verify():
     """Handle 'verify' command."""
-    _, json_output = _extract_global_flags(sys.argv[2:])
+    _, json_output, _no_color = _extract_global_flags(sys.argv[2:])
     verify_apps(json_output=json_output)
 
 
@@ -2222,13 +2395,13 @@ def _cmd_clean():
 
 def _cmd_stats():
     """Handle 'stats' command."""
-    _, json_output = _extract_global_flags(sys.argv[2:])
+    _, json_output, _no_color = _extract_global_flags(sys.argv[2:])
     stats_command(json_output=json_output)
 
 
 def _cmd_doctor():
     """Handle 'doctor' command."""
-    _, json_output = _extract_global_flags(sys.argv[2:])
+    _, json_output, _no_color = _extract_global_flags(sys.argv[2:])
     doctor(json_output=json_output)
 
 
@@ -2375,7 +2548,12 @@ def main():
     command = sys.argv[1]
     handler = _COMMANDS.get(command)
     if handler:
-        handler()
+        try:
+            handler()
+        except ValueError as e:
+            # Catch ValueError from _parse_args (flag missing its value).
+            print_error(str(e))
+            sys.exit(1)
     else:
         print_error(f"Unknown command: {command}")
         print()

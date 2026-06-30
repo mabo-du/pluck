@@ -6,7 +6,10 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-COPY src/gh_install.py /app/src/
+# Copy BOTH source files — gh_install.py is just `from pluck import *`,
+# so pluck.py MUST be present or `pip install -e .` fails to find the
+# `pluck` module declared in pyproject.toml's py-modules list.
+COPY src/pluck.py src/gh_install.py /app/src/
 COPY pyproject.toml /app/
 COPY README.md /app/
 COPY LICENSE /app/

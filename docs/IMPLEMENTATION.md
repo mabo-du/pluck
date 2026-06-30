@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-`pluck` is a single-file Python 3 CLI application (~1500 lines) with zero external dependencies. It provides a simple interface for installing repositories from any git hosting platform (GitHub, GitLab, Codeberg, Bitbucket, SourceHut, etc.) by auto-detecting project type and applying the appropriate installation strategy.
+`pluck` is a single-file Python 3 CLI application (~2400 lines) with zero external dependencies. It provides a simple interface for installing repositories from any git hosting platform (GitHub, GitLab, Codeberg, Bitbucket, SourceHut, etc.) by auto-detecting the project type and applying the appropriate installation strategy.
 
 ### Entry Point
 
@@ -12,23 +12,29 @@ src/pluck.py
 
 Executed via `python src/pluck.py <command> [args]` or `pluck` after pip install.
 
+A backward-compat shim at `src/gh_install.py` (`from pluck import *`) preserves the legacy `gh-install` entry point.
+
 ### Core Modules (by function group)
 
 | Group | Functions | Purpose |
 |-------|-----------|---------|
-| **CLI** | `main()`, `print_usage()` | Command routing for 17 commands |
-| **URL Parsing** | `parse_repo_url()`, `_parse_gist_url()`, `_detect_host_type()` | Extract owner/repo from any git repo URL; detect forge type |
-| **Detection** | `detect_install_method()` | Scans repo for project files with configurable method priority |
+| **CLI** | `main()`, `print_usage()`, `_parse_args()` | Command routing for 19 commands |
+| **URL Parsing** | `parse_repo_url()`, `_parse_snippet_url()`, `_detect_host_type()` | Extract owner/repo from any git repo URL; detect forge type; handle gists and GitLab snippets |
+| **Detection** | `detect_install_method()`, `_check_install_method()` | Scans repo for project files with configurable method priority |
 | **Installers** | `install_script()`, `install_python()`, `install_node()`, `install_go()`, `install_rust()`, `install_binary()`, `install_make()` | Project-type-specific installation logic |
-| **Orchestration** | `download_and_install()` | Clones to temp (with shallow/ref support), detects method, dispatches installer, registers, cleans up, shows summary |
-| **Registry** | `register_app()`, `load_registry()`, `save_registry()`, `list_installed()`, `uninstall_app()` | JSON-based app tracking at `~/.pluck-registry.json` |
-| **Config** | `_load_user_config()`, `_save_user_config()`, `config_command()` | User config at `$XDG_CONFIG_HOME/pluck/config.json` |
-| **Info** | `info_app()`, `_get_disk_size()` | Detailed app info with disk size calculation |
+| **Release assets** | `install_release_asset()`, `_github_release_url()`, `_gitlab_release_url()`, `_safe_tar_members()` | Download prebuilt release assets; safe tar/zip extraction |
+| **Orchestration** | `download_and_install()`, `_clone_repo()`, `_try_release_install()`, `_install_local_path()` | Clones to temp (with shallow/ref support), detects method, dispatches installer, registers, cleans up, shows summary |
+| **Registry** | `register_app()`, `load_registry()`, `save_registry()`, `_with_registry_lock()`, `list_installed()`, `uninstall_app()`, `pin_app()`, `unpin_app()` | JSON-based app tracking at `~/.pluck-registry.json` with atomic writes + advisory file locking |
+| **Config** | `_load_user_config()`, `_save_user_config()`, `config_command()`, `_migrate_old_registry()` | User config at `$XDG_CONFIG_HOME/pluck/config.json`; one-time migration from old `gh-install` paths |
+| **Info** | `info_app()`, `_get_disk_size()`, `_safe_dir_size()`, `_format_bytes()` | Detailed app info with disk size calculation |
 | **Doctor** | `doctor()` | Checks availability of git, python3, npm, go, cargo, make |
-| **Search** | `search_github()` | GitHub API repository search via `urllib` |
+| **Search** | `search_github()`, `search_gitlab()`, `search_codeberg()`, `search_bitbucket()`, `search_all_forges()` | Multi-forge repo search via `urllib` (with `_safe_urlopen` scheme guard) |
 | **Migration** | `export_registry()`, `import_registry()` | Export/import registry for machine migration |
-| **UI** | `Colors`, `print_header()`, `print_success()`, `print_warning()`, `print_error()` | Terminal color output |
+| **Cache** | `cache_command()` | Prune or locate the download cache at `~/.cache/pluck` |
+| **Self-update** | `self_update()` | Pip-upgrade `pluck-cli` in place |
+| **UI** | `Colors`, `print_header()`, `print_success()`, `print_warning()`, `print_error()` | Terminal color output with TTY auto-detection |
 | **Completion** | `_completion_script()`, `_get_app_names()` | Bash and Zsh shell completion generation |
+| **Security** | `_safe_urlopen()`, `_sanitize_repo_name()`, `_safe_tar_members()`, `SHARED_PATHS` | Scheme allowlist, path-traversal guard, safe archive extraction, shared-dir delete protection |
 
 ### Data Flow
 
@@ -38,47 +44,26 @@ User input (URL)
   → git clone (temp dir, optional --depth 1, optional --branch)
   → detect_install_method() (respects method_priority config)
   → dispatch to appropriate install_*()
-  → register_app() → ~/.pluck-registry.json
+  → register_app() → ~/.pluck-registry.json (atomic write + lock)
   → post-install summary (name, method, location, size)
   → cleanup temp dir
 ```
 
-## Bugs and Issues
-
-### Resolved (18 total)
-
-1. ~~**`install_python` venv path collision**~~ — **FIXED**
-2. ~~**`uninstall_app` destructive for shared directories**~~ — **FIXED**
-3. ~~**No error handling for git clone failures**~~ — **FIXED**
-4. ~~**`register_app` uses platform-dependent `date` command**~~ — **FIXED**
-5. ~~**Hardcoded macOS-specific install directory**~~ — **FIXED**
-6. ~~**`install_go` ignores `install_dir` parameter**~~ — **FIXED**
-7. ~~**`install_node` copies entire repo including `node_modules`**~~ — **FIXED**
-8. ~~**`install_make` defined after reference**~~ — **FIXED**
-9. ~~**No progress output during `git clone`**~~ — **FIXED**
-10. ~~**`install_binary` executable detection is unreliable**~~ — **FIXED**
-11. ~~**No input validation for path traversal**~~ — **FIXED**
-12. ~~**Duplicate help text**~~ — **FIXED**
-13. ~~**Hardcoded NVIDIA API key in .aider.conf.yml**~~ — **FIXED**: Replaced with env var comment
-14. ~~**Duplicate code in download_and_install()**~~ — **FIXED**: Removed 55-line duplicate block that caused double clone + temp dir leak
-15. ~~**verify_apps() never defined**~~ — **FIXED**: Implemented function (was causing NameError)
-16. ~~**stats_command() never defined**~~ — **FIXED**: Implemented function (was causing NameError)
-17. ~~**json_output uninitialized in main()**~~ — **FIXED**: Initialized at top of main() + added `_extract_global_flags()` helper
-18. ~~**python3 hardcoded in doctor()**~~ — **FIXED**: Falls back to `python` if `python3` not found
+If `--method release` is used, `download_and_install` calls `_try_release_install` first, and falls back to a clone+install if no release assets are available.
 
 ## Infrastructure Status
 
 | Item | Status |
 |------|--------|
-| Test suite | 92 tests passing |
+| Test suite | 111 tests passing across 24 test classes |
 | Package configuration | `pyproject.toml` with setuptools, ruff, pytest, semantic-release |
 | Linting/formatting config | `pyproject.toml` with ruff config |
-| CI/CD pipeline | GitHub Actions (Ubuntu + macOS, Python 3.8–3.13, ruff lint, coverage) |
+| CI/CD pipeline | GitHub Actions release workflow (PyInstaller binaries for Linux/macOS/Windows + wheel + PyPI publish + GitHub Release) |
 | LICENSE file | MIT License |
 | CHANGELOG | `CHANGELOG.md` with Keep a Changelog format |
 | Contributing guide | `CONTRIBUTING.md` with dev workflow docs |
 | Pre-commit hooks | `.pre-commit-config.yaml` with ruff |
-| PyPI publishing | `.github/workflows/publish-pypi.yml` |
+| PyPI publishing | `.github/workflows/release.yml` |
 | Shell completion | Bash and Zsh completion scripts via `completion` command |
 | README badges | CI, License, Python version |
 | .gitignore | Comprehensive Python/build/IDE/OS patterns |
@@ -106,13 +91,16 @@ User input (URL)
       "url": "<github-url>",
       "path": "<install-path>",
       "method": "<install-method>",
+      "pinned": false,
       "installed_at": "<timestamp>"
     }
   }
 }
 ```
 
-**Install methods**: `script`, `binary`, `python`, `node`, `go`, `rust`, `make`, `download`
+**Install methods**: `script`, `binary`, `python`, `node`, `go`, `rust`, `make`, `download`, `release`
+
+**Concurrency**: Writes are atomic (temp file + rename). `register_app()` holds an advisory `fcntl.flock` on `~/.pluck-registry.lock` for the full read-modify-write so `--jobs > 1` parallel installs cannot lose each other's entries.
 
 ## User Config Schema
 
@@ -127,11 +115,11 @@ User input (URL)
 
 ## Test Suite
 
-**Location**: `tests/test_gh_install.py`
+**Location**: `tests/test_pluck.py`
 
-**Coverage**: 108 tests across 23 test classes:
+**Coverage**: 111 tests across 24 test classes:
 - `TestParseRepoUrl` (22 tests) — URL parsing for GitHub, GitLab, Codeberg, Bitbucket, SourceHut, Gitea, Gogs, Pagure, Forgejo, self-hosted, generic
-- `TestGistUrl` (4 tests) — gist URL parsing
+- `TestGistUrl` (7 tests) — gist URL parsing (GitHub gists + GitLab snippets)
 - `TestDetectInstallMethod` (17 tests) — Project type detection with method priority
 - `TestSharedPaths` (2 tests) — Safety guard validation
 - `TestValidMethods` (2 tests) — VALID_METHODS constant
@@ -154,7 +142,7 @@ User input (URL)
 
 **Run tests**: `python -m pytest tests/ -v`
 
-## Commands (17 total)
+## Commands (19 total)
 
 | Command | Description |
 |---------|-------------|
@@ -169,10 +157,14 @@ User input (URL)
 | `stats` | Show installation statistics |
 | `doctor` | Check tool availability (git, python3, npm, go, cargo, make) |
 | `config [key] [value]` | View or set configuration values |
-| `search <query>` | Search GitHub repositories via API |
+| `search <query> [--forge <name>] [--all] [--output <file>]` | Search repos across forges |
 | `export <file>` | Export registry to JSON file |
 | `import <file>` | Import registry from JSON file |
 | `completion <shell>` | Generate shell completion (bash/zsh) |
+| `pin <name>` | Pin an app to prevent updates |
+| `unpin <name>` | Unpin an app |
+| `self-update` | Update pluck via PyPI |
+| `cache <prune\|path>` | Manage download cache |
 | `version` | Show version |
 | `help` | Show usage |
 
@@ -187,3 +179,18 @@ User input (URL)
 | `--ref <ref>` | Clone a specific branch or tag |
 | `--method <method>` | Force a specific install method |
 | `--yes` | Non-interactive mode (alias for `--force`) |
+| `--json` | Machine-readable output (for select commands) |
+| `--no-color` | Disable colored output |
+| `--timeout <secs>` | Timeout for git clone in seconds |
+| `--retries <n>` | Auto-retry failed git clones with 2s backoff |
+| `--jobs <n>` | Number of parallel installs (default: 1) |
+| `--release` | Install from pre-built release assets instead of cloning |
+| `--verbose` | Show detailed git clone output |
+
+## Security Notes
+
+- **URL scheme allowlist**: `_safe_urlopen()` blocks `file://`, `ftp://`, and other non-http(s) schemes to prevent CVE-2023-24329-style abuse.
+- **Path traversal**: `_sanitize_repo_name()` rejects names containing `..` or leading slashes; safe archive extraction prevents tar/zip-slip.
+- **Shared directory protection**: `SHARED_PATHS` and `$HOME` are never deleted during uninstall/update.
+- **Atomic registry writes**: `save_registry()` writes to a temp file and renames, so a crash mid-write cannot corrupt `~/.pluck-registry.json`.
+- **Advisory locking**: `register_app()` holds an `fcntl.flock` so parallel installs (via `--jobs`) cannot lose each other's entries.

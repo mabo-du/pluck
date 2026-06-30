@@ -28,12 +28,15 @@ from pluck import (
     export_registry,
     import_registry,
     info_app,
+    install_python,
     load_registry,
     parse_repo_url,
+    pin_app,
     register_app,
     save_registry,
     stats_command,
     uninstall_app,
+    unpin_app,
     update_app,
     verify_apps,
 )
@@ -1115,27 +1118,29 @@ class TestFormatBytes:
 
 class TestExtractGlobalFlags:
     def test_no_flags(self):
-        args, json_output = _extract_global_flags(["app-name"])
+        args, json_output, no_color = _extract_global_flags(["app-name"])
         assert args == ["app-name"]
         assert json_output is False
+        assert no_color is False
 
     def test_json_flag(self):
-        args, json_output = _extract_global_flags(["--json", "app-name"])
+        args, json_output, _no_color = _extract_global_flags(["--json", "app-name"])
         assert args == ["app-name"]
         assert json_output is True
 
     def test_no_color_flag(self):
-        args, json_output = _extract_global_flags(["--no-color", "app-name"])
+        args, _json_output, no_color = _extract_global_flags(["--no-color", "app-name"])
         assert args == ["app-name"]
-        assert json_output is False
+        assert no_color is True
 
     def test_combined_flags_with_positional(self):
-        args, json_output = _extract_global_flags(["--json", "--no-color", "app-name"])
+        args, json_output, no_color = _extract_global_flags(["--json", "--no-color", "app-name"])
         assert args == ["app-name"]
         assert json_output is True
+        assert no_color is True
 
     def test_no_positional_args(self):
-        args, json_output = _extract_global_flags(["--json"])
+        args, json_output, _no_color = _extract_global_flags(["--json"])
         assert args == []
         assert json_output is True
 
@@ -1247,3 +1252,434 @@ class TestDownloadAndInstallMocked:
         )
 
         assert result is None  # All retries exhausted
+
+
+class TestParseArgsMissingFlagValue:
+    """Regression tests: --dir / --ref / --method etc. with no value used
+    to be silently appended to the URLs list, producing confusing
+    'Invalid repository URL: --dir' errors. They must now raise ValueError.
+    """
+
+    def test_dir_without_value_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="--dir"):
+            _parse_args(["--dir"])
+
+    def test_ref_without_value_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="--ref"):
+            _parse_args(["--ref"])
+
+    def test_method_without_value_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="--method"):
+            _parse_args(["--method"])
+
+    def test_timeout_without_value_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="--timeout"):
+            _parse_args(["--timeout"])
+
+    def test_jobs_without_value_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="--jobs"):
+            _parse_args(["--jobs"])
+
+    def test_dir_with_value_at_end_ok(self):
+        """--dir followed by a value should NOT raise."""
+        (
+            install_dir,
+            *_rest,
+            urls,
+        ) = _parse_args(["--dir", "/opt"])
+        assert install_dir == Path("/opt")
+        assert urls == []
+
+
+class TestRegistryAtomicWrite:
+    """Regression tests for the registry atomic write + locking refactor."""
+
+    def setup_method(self):
+        self.tmp = tempfile.mkdtemp()
+        self.registry_file = Path(self.tmp) / "test-registry.json"
+
+    def test_save_registry_writes_atomically(self):
+        """save_registry should leave a valid JSON file at APP_REGISTRY_FILE."""
+        import pluck
+
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
+        try:
+            save_registry({"apps": {"foo": {"url": "x", "path": "/x", "method": "script", "installed_at": "now"}}})
+            # File should exist and be valid JSON.
+            assert self.registry_file.exists()
+            with open(self.registry_file) as f:
+                data = json.load(f)
+            assert "foo" in data["apps"]
+            # Temp file should have been renamed away.
+            assert not self.registry_file.with_suffix(".tmp").exists()
+        finally:
+            pluck.APP_REGISTRY_FILE = original
+
+    def test_load_registry_recovers_from_corrupt_file(self, capsys):
+        """A corrupt registry file should not crash load_registry."""
+        import pluck
+
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
+        try:
+            self.registry_file.write_text("{not valid json")
+            result = load_registry()
+            assert result == {"apps": {}}
+            captured = capsys.readouterr()
+            assert "unreadable" in captured.out.lower()
+        finally:
+            pluck.APP_REGISTRY_FILE = original
+
+    def test_register_app_creates_lock_file(self):
+        """register_app should create a sibling .lock file (advisory lock)."""
+        import pluck
+
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
+        try:
+            register_app("foo", "https://github.com/a/b", Path("/tmp/foo"), "script")
+            lock_file = self.registry_file.with_suffix(".lock")
+            assert lock_file.exists()
+        finally:
+            pluck.APP_REGISTRY_FILE = original
+
+    def test_uninstall_app_acquires_lock(self):
+        """uninstall_app should use the registry lock (regression: it used
+        to do an unsynchronized read-modify-write that could lose entries
+        under --jobs parallelism).
+        """
+        import pluck
+
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
+        try:
+            # Seed registry with an app whose install path doesn't exist
+            # (so uninstall doesn't try to delete anything).
+            save_registry({
+                "apps": {
+                    "ghost": {
+                        "url": "https://github.com/a/ghost",
+                        "path": "/nonexistent/ghost",
+                        "method": "script",
+                        "installed_at": "now",
+                    }
+                }
+            })
+            result = uninstall_app("ghost", force=True)
+            assert result is True
+            lock_file = self.registry_file.with_suffix(".lock")
+            assert lock_file.exists()
+            # The app should be gone from the registry.
+            assert "ghost" not in load_registry()["apps"]
+        finally:
+            pluck.APP_REGISTRY_FILE = original
+
+    def test_pin_unpin_acquires_lock(self):
+        """pin_app and unpin_app should both use the registry lock."""
+        import pluck
+
+        original = pluck.APP_REGISTRY_FILE
+        pluck.APP_REGISTRY_FILE = self.registry_file
+        try:
+            register_app("foo", "https://github.com/a/foo",
+                         Path("/tmp/foo"), "script")
+            lock_file = self.registry_file.with_suffix(".lock")
+
+            # Clear the lock file timestamp to verify it's touched again.
+            from time import sleep
+            sleep(0.05)
+            pin_app("foo")
+            assert lock_file.exists()
+            assert load_registry()["apps"]["foo"]["pinned"] is True
+
+            sleep(0.05)
+            unpin_app("foo")
+            assert lock_file.exists()
+            assert load_registry()["apps"]["foo"]["pinned"] is False
+        finally:
+            pluck.APP_REGISTRY_FILE = original
+
+
+class TestInstallPythonSymlink:
+    """Regression test: install_python used to try to unlink app_dir (a
+    non-empty directory) when an entry-point script existed. Verify it
+    now creates a sibling bin/ symlink instead and does not crash.
+    """
+
+    def test_install_python_creates_bin_symlink(self, capsys):
+
+        # Build a tiny fake repo with a pyproject.toml declaring an entry point
+        # matching the repo name. Use a venv with a stub entry-point binary.
+        tmp_repo = Path(tempfile.mkdtemp()) / "myapp"
+        tmp_repo.mkdir(parents=True)
+        (tmp_repo / "pyproject.toml").write_text(
+            """
+[project]
+name = "myapp"
+version = "0.0.1"
+[project.scripts]
+myapp = "myapp:main"
+"""
+        )
+        (tmp_repo / "myapp.py").write_text("def main(): pass\n")
+
+        install_dir = Path(tempfile.mkdtemp())
+
+        # Mock venv creation + pip install so we don't actually run them.
+        with patch("pluck.subprocess.run") as mock_run:
+            mock_run.return_value = None  # all subprocess calls succeed
+            # Pre-create the venv bin dir + fake entry-point so the symlink
+            # code path triggers.
+            venv_bin = install_dir / "myapp" / ".venv" / "bin"
+            venv_bin.mkdir(parents=True)
+            (venv_bin / "myapp").write_text("#!/bin/sh\n")
+
+            result = install_python(tmp_repo, install_dir)
+
+        # install_python should return the app_dir (not None, not crash).
+        assert result is not None
+        # The bin symlink should exist at install_dir / "bin" / "myapp".
+        symlink_path = install_dir / "bin" / "myapp"
+        assert symlink_path.is_symlink() or symlink_path.exists()
+        # The original app_dir should still be a directory (not replaced).
+        assert (install_dir / "myapp").is_dir()
+
+    def test_install_python_skips_symlink_when_target_is_directory(self, capsys):
+        """If a directory already exists at install_dir/bin/<name>, the
+        symlink logic must NOT call unlink() on it (which would raise
+        IsADirectoryError). It should warn and skip instead.
+        """
+        tmp_repo = Path(tempfile.mkdtemp()) / "myapp"
+        tmp_repo.mkdir(parents=True)
+        (tmp_repo / "pyproject.toml").write_text(
+            """
+[project]
+name = "myapp"
+version = "0.0.1"
+[project.scripts]
+myapp = "myapp:main"
+"""
+        )
+        (tmp_repo / "myapp.py").write_text("def main(): pass\n")
+
+        install_dir = Path(tempfile.mkdtemp())
+
+        # Pre-create a directory at the symlink target path.
+        blocking_dir = install_dir / "bin" / "myapp"
+        blocking_dir.mkdir(parents=True)
+        # Put a file in it so we can verify it's not deleted.
+        (blocking_dir / "important.txt").write_text("user data")
+
+        # Pre-create the venv entry-point so the symlink code path triggers.
+        venv_bin = install_dir / "myapp" / ".venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "myapp").write_text("#!/bin/sh\n")
+
+        with patch("pluck.subprocess.run") as mock_run:
+            mock_run.return_value = None
+            result = install_python(tmp_repo, install_dir)
+
+        # Should not crash, should return app_dir.
+        assert result is not None
+        # The user's directory and its contents must be preserved.
+        assert blocking_dir.is_dir()
+        assert (blocking_dir / "important.txt").exists()
+        # A warning should have been printed.
+        captured = capsys.readouterr()
+        assert "directory" in captured.out.lower()
+
+
+class TestSafeTarMembers:
+    """Regression test for CVE-2007-4559 (tarball path traversal)."""
+
+    def test_safe_tar_members_rejects_path_traversal(self):
+        """Names with .. should be filtered out."""
+        import io
+        import tarfile
+
+        import pluck
+
+        # Build an in-memory tar with a malicious entry.
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            # Safe entry
+            info = tarfile.TarInfo("safe.txt")
+            info.size = 4
+            tar.addfile(info, io.BytesIO(b"data"))
+            # Unsafe entry (path traversal)
+            info = tarfile.TarInfo("../../etc/passwd")
+            info.size = 4
+            tar.addfile(info, io.BytesIO(b"evil"))
+
+        buf.seek(0)
+        with tarfile.open(fileobj=buf) as tar:
+            members = list(pluck._safe_tar_members(tar))
+
+        # Only the safe member should be yielded.
+        names = [m.name for m in members]
+        assert "safe.txt" in names
+        assert all(".." not in n for n in names)
+
+    def test_safe_tar_members_rejects_backslash_traversal(self):
+        """Names with backslash path traversal (foo\\..\\..\\bar) should be
+        filtered out — on Unix a backslash is a literal filename character,
+        so a naive check that only looks for '..' split by the OS separator
+        would be bypassed.
+        """
+        import io
+        import tarfile
+
+        import pluck
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            info = tarfile.TarInfo("safe.txt")
+            info.size = 4
+            tar.addfile(info, io.BytesIO(b"data"))
+            # Backslash-based traversal — would bypass Path("..").parts check
+            # on Unix without backslash normalization.
+            info = tarfile.TarInfo("foo\\..\\..\\evil.txt")
+            info.size = 4
+            tar.addfile(info, io.BytesIO(b"evil"))
+
+        buf.seek(0)
+        with tarfile.open(fileobj=buf) as tar:
+            members = list(pluck._safe_tar_members(tar))
+
+        names = [m.name for m in members]
+        assert "safe.txt" in names
+        # The backslash-traversal entry must not appear.
+        assert all("evil" not in n for n in names)
+
+
+class TestProtocolHandlerUrlParsing:
+    """Regression test: scripts/pluck-protocol-handler.sh used to extract
+    the 'url' query param with a naive sed, which appended extra &key=value
+    params to the target URL. The fixed handler uses Python's urllib.parse
+    for correct query-string handling. We test the parsing logic directly.
+    """
+
+    def _extract_url_from_pluck_protocol(self, pluck_url):
+        """Mirror the extraction logic from pluck-protocol-handler.sh."""
+        import urllib.parse
+
+        parsed = urllib.parse.urlparse(pluck_url)
+        qs = urllib.parse.parse_qs(parsed.query)
+        urls = qs.get("url")
+        return urls[0] if urls else None
+
+    def test_multi_param_url_extracts_only_url(self):
+        """pluck://install?url=...&foo=bar should yield only the url value."""
+        result = self._extract_url_from_pluck_protocol(
+            "pluck://install?url=https%3A%2F%2Fgithub.com%2Fuser%2Frepo&foo=bar"
+        )
+        assert result == "https://github.com/user/repo"
+        # The trailing &foo=bar MUST NOT be appended.
+        assert "foo=bar" not in result
+
+    def test_single_param_url_still_works(self):
+        """Simple single-param URL should still parse correctly."""
+        result = self._extract_url_from_pluck_protocol(
+            "pluck://install?url=https%3A%2F%2Fgithub.com%2Fuser%2Frepo"
+        )
+        assert result == "https://github.com/user/repo"
+
+    def test_url_with_query_string_preserved(self):
+        """A URL that itself contains query params should be preserved intact."""
+        result = self._extract_url_from_pluck_protocol(
+            "pluck://install?url=https%3A%2F%2Fgithub.com%2Fuser%2Frepo%3Fbranch%3Dmain"
+        )
+        assert result == "https://github.com/user/repo?branch=main"
+
+    def test_missing_url_param_returns_none(self):
+        """If the pluck:// URL has no url= param, extraction returns None."""
+        result = self._extract_url_from_pluck_protocol("pluck://install?foo=bar")
+        assert result is None
+
+
+class TestReleaseInstallFallback:
+    """Regression test: when method=release fails, download_and_install
+    used to return None without trying a clone. It should now fall back.
+    """
+
+    def setup_method(self):
+        self.tmp_clone = Path(tempfile.mkdtemp())
+        self.tmp_install = Path(tempfile.mkdtemp())
+
+    @patch("pluck.install_release_asset")
+    @patch("pluck._clone_repo")
+    @patch("pluck.parse_repo_url")
+    def test_release_failure_falls_back_to_clone(
+        self, mock_parse, mock_clone, mock_release
+    ):
+        """If install_release_asset returns None, a clone+install should run."""
+        mock_parse.return_value = {
+            "host": "github.com",
+            "host_type": "github",
+            "owner": "test",
+            "repo": "myrepo",
+            "url": "https://github.com/test/myrepo",
+            "is_gist": False,
+        }
+        # Release asset install fails.
+        mock_release.return_value = None
+
+        # Clone succeeds — return a temp dir + repo_path.
+        repo_path = self.tmp_clone / "myrepo"
+        repo_path.mkdir(parents=True)
+        (repo_path / "install.sh").touch()  # so detect_install_method picks "script"
+        mock_clone.return_value = (self.tmp_clone, repo_path)
+
+        # Run with method_override='release'.
+        with patch("pluck.subprocess.run") as mock_run:
+            mock_run.return_value = None
+            with patch("pluck.register_app") as mock_register:
+                mock_register.return_value = None
+                download_and_install(
+                    "https://github.com/test/myrepo",
+                    install_dir=self.tmp_install,
+                    method_override="release",
+                )
+
+        # The clone must have been attempted (fall-through happened).
+        mock_clone.assert_called_once()
+        # And install_release_asset was tried first.
+        mock_release.assert_called_once()
+
+
+class TestInstallMakeFallback:
+    """Regression test: install_make used to call 'make' (without check=True
+    semantics) on the fallback path, which could raise an uncaught
+    CalledProcessError. It should now return None instead of crashing.
+    """
+
+    def test_install_make_returns_none_when_both_make_invocations_fail(self, capsys):
+        import subprocess as sp
+
+        import pluck
+
+        tmp_repo = Path(tempfile.mkdtemp())
+        (tmp_repo / "Makefile").write_text("all:\n\texit 1\n")
+        install_dir = Path(tempfile.mkdtemp())
+
+        with patch("pluck.subprocess.run") as mock_run:
+            # Both 'make install' and 'make' raise CalledProcessError.
+            mock_run.side_effect = [
+                sp.CalledProcessError(2, "make install"),
+                sp.CalledProcessError(2, "make"),
+            ]
+            result = pluck.install_make(tmp_repo, install_dir)
+
+        # Should return None (not raise).
+        assert result is None
