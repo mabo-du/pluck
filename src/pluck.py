@@ -767,19 +767,27 @@ def _confirm_install(repo_info, method):
     """Ask the user to confirm before running code from a freshly-cloned,
     unreviewed repository. Returns True if it's safe to proceed.
 
-    Refuses (rather than hanging or crashing) when stdin isn't an
-    interactive terminal — a non-interactive run must pass --yes/--force
-    to skip this on purpose.
+    Refuses (rather than hanging or crashing) when stdin isn't usable for
+    a real prompt — a non-interactive run must pass --yes/--force to skip
+    this on purpose. Ctrl-C/Ctrl-D at the prompt are treated as "no"
+    rather than crashing with a traceback.
     """
     description = _METHOD_DESCRIPTIONS.get(method, f"run the '{method}' install method")
     print()
     print_warning(f"About to install from {repo_info.get('url', 'this repository')}")
     print(f"  Detected method: {Colors.CYAN}{method}{Colors.END} — this will {description}.")
-    if not sys.stdin.isatty():
-        print_error("Refusing to run an unreviewed install non-interactively without --yes.")
+    if sys.stdin is None or not sys.stdin.isatty():
+        print_error("Refusing to run an unreviewed install non-interactively without --yes/--force.")
         print("  Re-run with --yes (or --force) if you're sure.")
         return False
-    confirm = input("  Continue? [y/N]: ")
+    try:
+        confirm = input("  Continue? [y/N]: ")
+    except EOFError:
+        print()
+        return False
+    except KeyboardInterrupt:
+        print("\nCancelled by user.")
+        sys.exit(130)
     return confirm.lower() == "y"
 
 
@@ -2292,7 +2300,7 @@ def _cmd_install():
 
     if jobs > 1 and len(urls) > 1:
         if not force:
-            print_error("Installing multiple repos with --jobs requires --yes.")
+            print_error("Installing multiple repos with --jobs requires --force (or --yes).")
             print("  Can't safely prompt for confirmation on multiple repos at once.")
             sys.exit(1)
         print_header(f"Installing {len(urls)} repos with {jobs} workers")

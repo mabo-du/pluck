@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1265,6 +1266,10 @@ class TestInstallConfirmation:
         self.tmp_clone = Path(tempfile.mkdtemp())
         self.tmp_install = Path(tempfile.mkdtemp())
 
+    def teardown_method(self):
+        shutil.rmtree(self.tmp_clone, ignore_errors=True)
+        shutil.rmtree(self.tmp_install, ignore_errors=True)
+
     def _mock_repo_info(self):
         return {
             "host": "github.com",
@@ -1340,6 +1345,7 @@ class TestInstallConfirmation:
 
         mock_input.assert_called_once()
         assert mock_run.call_count == 2
+        assert mock_run.call_args_list[1][0][0] == ["bash", "install.sh", "--yes"]
 
     @patch("builtins.input", return_value="n")
     @patch("sys.stdin.isatty", return_value=True)
@@ -1376,6 +1382,48 @@ class TestInstallConfirmation:
             with pytest.raises(SystemExit) as exc_info:
                 _cmd_install()
         assert exc_info.value.code == 1
+
+    @patch("pluck.download_and_install")
+    def test_parallel_install_with_force_succeeds(self, mock_download):
+        mock_download.return_value = None
+        test_argv = [
+            "pluck",
+            "install",
+            "https://github.com/a/b",
+            "https://github.com/c/d",
+            "--jobs",
+            "2",
+            "--yes",
+        ]
+        with patch.object(sys, "argv", test_argv):
+            _cmd_install()  # must not raise SystemExit
+
+        assert mock_download.call_count == 2
+        for call in mock_download.call_args_list:
+            assert call.kwargs.get("force") is True
+
+    @patch("sys.stdin", None)
+    def test_confirm_install_refuses_when_stdin_is_none(self):
+        # sys.stdin can genuinely be None (e.g. some daemon/GUI contexts) -
+        # must fail safe, not raise AttributeError calling .isatty() on it.
+        assert _confirm_install(self._mock_repo_info(), "script") is False
+
+    @patch("builtins.input", side_effect=EOFError)
+    @patch("sys.stdin.isatty", return_value=True)
+    def test_confirm_install_eof_at_prompt_is_treated_as_no(self, mock_isatty, mock_input):
+        # Ctrl-D (or any closed stdin mid-prompt) must cancel, not crash.
+        assert _confirm_install(self._mock_repo_info(), "script") is False
+
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    @patch("sys.stdin.isatty", return_value=True)
+    def test_confirm_install_ctrl_c_exits_cleanly(self, mock_isatty, mock_input):
+        import pytest
+
+        # Ctrl-C must exit with the conventional 128+SIGINT code, not an
+        # unhandled traceback.
+        with pytest.raises(SystemExit) as exc_info:
+            _confirm_install(self._mock_repo_info(), "script")
+        assert exc_info.value.code == 130
 
 
 class TestParseArgsMissingFlagValue:
