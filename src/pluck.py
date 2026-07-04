@@ -749,6 +749,47 @@ _INSTALL_FUNCS = {
     "download": install_binary,
 }
 
+# What each install method actually executes, in plain language — shown to
+# the user before we run anything from a repo they haven't reviewed.
+_METHOD_DESCRIPTIONS = {
+    "script": "run install.sh from the cloned repo",
+    "python": "create a virtualenv and run 'pip install -e .' (executes the package's build/setup code)",
+    "node": "run 'npm install' (executes any postinstall scripts the package defines)",
+    "go": "run 'go build' to compile the project",
+    "rust": "run 'cargo build --release' (executes any build.rs build script the crate defines)",
+    "make": "run 'make install' (falling back to 'make') from the cloned repo",
+    "binary": "copy pre-built files from the repo — no code is executed",
+    "download": "copy pre-built files from the repo — no code is executed",
+}
+
+
+def _confirm_install(repo_info, method):
+    """Ask the user to confirm before running code from a freshly-cloned,
+    unreviewed repository. Returns True if it's safe to proceed.
+
+    Refuses (rather than hanging or crashing) when stdin isn't usable for
+    a real prompt — a non-interactive run must pass --yes/--force to skip
+    this on purpose. Ctrl-C/Ctrl-D at the prompt are treated as "no"
+    rather than crashing with a traceback.
+    """
+    description = _METHOD_DESCRIPTIONS.get(method, f"run the '{method}' install method")
+    print()
+    print_warning(f"About to install from {repo_info.get('url', 'this repository')}")
+    print(f"  Detected method: {Colors.CYAN}{method}{Colors.END} — this will {description}.")
+    if sys.stdin is None or not sys.stdin.isatty():
+        print_error("Refusing to run an unreviewed install non-interactively without --yes/--force.")
+        print("  Re-run with --yes (or --force) if you're sure.")
+        return False
+    try:
+        confirm = input("  Continue? [y/N]: ")
+    except EOFError:
+        print()
+        return False
+    except KeyboardInterrupt:
+        print("\nCancelled by user.")
+        sys.exit(130)
+    return confirm.lower() == "y"
+
 
 def download_and_install(
     repo_url,
@@ -760,6 +801,7 @@ def download_and_install(
     verbose=False,
     timeout=None,
     retries=0,
+    force=False,
 ):
     """Download and install a repository from any git hosting URL"""
 
@@ -826,6 +868,11 @@ def download_and_install(
     method_priority = user_config.get("method_priority")
     install_method = method_override or detect_install_method(repo_path, method_priority)
     print(f"  Detected install method: {install_method}")
+
+    if not force and not _confirm_install(repo_info, install_method):
+        print_warning("Installation cancelled.")
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return None
 
     # Install based on method
     install_func = _INSTALL_FUNCS.get(install_method, install_binary)
@@ -2252,6 +2299,10 @@ def _cmd_install():
         print_header("Dry Run — No changes will be made")
 
     if jobs > 1 and len(urls) > 1:
+        if not force:
+            print_error("Installing multiple repos with --jobs requires --force (or --yes).")
+            print("  Can't safely prompt for confirmation on multiple repos at once.")
+            sys.exit(1)
         print_header(f"Installing {len(urls)} repos with {jobs} workers")
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
             futures = {
@@ -2266,6 +2317,7 @@ def _cmd_install():
                     verbose=verbose,
                     timeout=timeout,
                     retries=retries,
+                    force=force,
                 ): url
                 for url in urls
             }
@@ -2288,6 +2340,7 @@ def _cmd_install():
                 verbose=verbose,
                 timeout=timeout,
                 retries=retries,
+                force=force,
             )
 
 

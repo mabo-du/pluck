@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from pluck import (
     SHARED_PATHS,
     VALID_METHODS,
+    _cmd_install,
+    _confirm_install,
     _detect_host_type,
     _extract_global_flags,
     _format_bytes,
@@ -1252,6 +1255,175 @@ class TestDownloadAndInstallMocked:
         )
 
         assert result is None  # All retries exhausted
+
+
+class TestInstallConfirmation:
+    """Covers PLK-01: installing must never silently run a repo's install
+    method without either an explicit --force/--yes or a real 'y' from an
+    interactive user."""
+
+    def setup_method(self):
+        self.tmp_clone = Path(tempfile.mkdtemp())
+        self.tmp_install = Path(tempfile.mkdtemp())
+
+    def teardown_method(self):
+        shutil.rmtree(self.tmp_clone, ignore_errors=True)
+        shutil.rmtree(self.tmp_install, ignore_errors=True)
+
+    def _mock_repo_info(self):
+        return {
+            "host": "github.com",
+            "host_type": "github",
+            "owner": "test",
+            "repo": "myrepo",
+            "url": "https://github.com/test/myrepo",
+            "is_gist": False,
+        }
+
+    def _make_fake_clone_with_install_script(self):
+        (self.tmp_clone / "myrepo").mkdir(parents=True)
+        (self.tmp_clone / "myrepo" / "install.sh").touch()
+
+    def test_confirm_install_refuses_when_noninteractive(self):
+        # Under pytest, stdin isn't a real terminal - this documents that
+        # assumption and checks the function fails safe because of it.
+        assert sys.stdin.isatty() is False
+        assert _confirm_install(self._mock_repo_info(), "script") is False
+
+    @patch("pluck.subprocess.run")
+    @patch("pluck.tempfile.mkdtemp")
+    @patch("pluck.parse_repo_url")
+    def test_install_cancelled_without_force_noninteractive(self, mock_parse, mock_mkdtemp, mock_run):
+        mock_parse.return_value = self._mock_repo_info()
+        mock_mkdtemp.return_value = str(self.tmp_clone)
+        self._make_fake_clone_with_install_script()
+
+        result = download_and_install(
+            "https://github.com/test/myrepo",
+            install_dir=self.tmp_install,
+        )
+
+        assert result is None
+        # Only the clone should have run - install.sh must never execute
+        assert mock_run.call_count == 1
+        assert "clone" in mock_run.call_args_list[0][0][0]
+
+    @patch("pluck.subprocess.run")
+    @patch("pluck.tempfile.mkdtemp")
+    @patch("pluck.parse_repo_url")
+    def test_install_proceeds_with_force(self, mock_parse, mock_mkdtemp, mock_run):
+        mock_parse.return_value = self._mock_repo_info()
+        mock_mkdtemp.return_value = str(self.tmp_clone)
+        self._make_fake_clone_with_install_script()
+
+        download_and_install(
+            "https://github.com/test/myrepo",
+            install_dir=self.tmp_install,
+            force=True,
+        )
+
+        # Clone, then install.sh - the pre-existing happy path, unchanged
+        assert mock_run.call_count == 2
+        assert mock_run.call_args_list[1][0][0] == ["bash", "install.sh", "--yes"]
+
+    @patch("builtins.input", return_value="y")
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("pluck.subprocess.run")
+    @patch("pluck.tempfile.mkdtemp")
+    @patch("pluck.parse_repo_url")
+    def test_install_proceeds_when_user_types_y(
+        self, mock_parse, mock_mkdtemp, mock_run, mock_isatty, mock_input
+    ):
+        mock_parse.return_value = self._mock_repo_info()
+        mock_mkdtemp.return_value = str(self.tmp_clone)
+        self._make_fake_clone_with_install_script()
+
+        download_and_install(
+            "https://github.com/test/myrepo",
+            install_dir=self.tmp_install,
+        )
+
+        mock_input.assert_called_once()
+        assert mock_run.call_count == 2
+        assert mock_run.call_args_list[1][0][0] == ["bash", "install.sh", "--yes"]
+
+    @patch("builtins.input", return_value="n")
+    @patch("sys.stdin.isatty", return_value=True)
+    @patch("pluck.subprocess.run")
+    @patch("pluck.tempfile.mkdtemp")
+    @patch("pluck.parse_repo_url")
+    def test_install_cancelled_when_user_types_n(
+        self, mock_parse, mock_mkdtemp, mock_run, mock_isatty, mock_input
+    ):
+        mock_parse.return_value = self._mock_repo_info()
+        mock_mkdtemp.return_value = str(self.tmp_clone)
+        self._make_fake_clone_with_install_script()
+
+        result = download_and_install(
+            "https://github.com/test/myrepo",
+            install_dir=self.tmp_install,
+        )
+
+        assert result is None
+        assert mock_run.call_count == 1  # clone only
+
+    def test_parallel_install_without_force_exits(self):
+        import pytest
+
+        test_argv = [
+            "pluck",
+            "install",
+            "https://github.com/a/b",
+            "https://github.com/c/d",
+            "--jobs",
+            "2",
+        ]
+        with patch.object(sys, "argv", test_argv):
+            with pytest.raises(SystemExit) as exc_info:
+                _cmd_install()
+        assert exc_info.value.code == 1
+
+    @patch("pluck.download_and_install")
+    def test_parallel_install_with_force_succeeds(self, mock_download):
+        mock_download.return_value = None
+        test_argv = [
+            "pluck",
+            "install",
+            "https://github.com/a/b",
+            "https://github.com/c/d",
+            "--jobs",
+            "2",
+            "--yes",
+        ]
+        with patch.object(sys, "argv", test_argv):
+            _cmd_install()  # must not raise SystemExit
+
+        assert mock_download.call_count == 2
+        for call in mock_download.call_args_list:
+            assert call.kwargs.get("force") is True
+
+    @patch("sys.stdin", None)
+    def test_confirm_install_refuses_when_stdin_is_none(self):
+        # sys.stdin can genuinely be None (e.g. some daemon/GUI contexts) -
+        # must fail safe, not raise AttributeError calling .isatty() on it.
+        assert _confirm_install(self._mock_repo_info(), "script") is False
+
+    @patch("builtins.input", side_effect=EOFError)
+    @patch("sys.stdin.isatty", return_value=True)
+    def test_confirm_install_eof_at_prompt_is_treated_as_no(self, mock_isatty, mock_input):
+        # Ctrl-D (or any closed stdin mid-prompt) must cancel, not crash.
+        assert _confirm_install(self._mock_repo_info(), "script") is False
+
+    @patch("builtins.input", side_effect=KeyboardInterrupt)
+    @patch("sys.stdin.isatty", return_value=True)
+    def test_confirm_install_ctrl_c_exits_cleanly(self, mock_isatty, mock_input):
+        import pytest
+
+        # Ctrl-C must exit with the conventional 128+SIGINT code, not an
+        # unhandled traceback.
+        with pytest.raises(SystemExit) as exc_info:
+            _confirm_install(self._mock_repo_info(), "script")
+        assert exc_info.value.code == 130
 
 
 class TestParseArgsMissingFlagValue:
