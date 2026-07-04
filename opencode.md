@@ -34,5 +34,5 @@ Do not modify without explicit human approval:
 ## Key files
 
 - `src/pluck.py` — main application
-- `tests/test_pluck.py` — test suite (128 tests)
+- `tests/test_pluck.py` — test suite (132 tests)
 - `pyproject.toml` — build config, entry points, lint settings
