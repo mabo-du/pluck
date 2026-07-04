@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-05
+
+### Fixed (security)
+- **Security**: `pluck install` ran a repo's detected install method (`install.sh`, `pip install -e`, `npm install`, `cargo build`, or `make`) immediately, with no confirmation step at all — `--force`/`--yes` were parsed but never actually wired into the install path, so they had no effect. Installing now always asks for confirmation first, showing exactly what will run, unless `--force`/`--yes` is passed on purpose. Refuses safely on a non-interactive run, `sys.stdin` being `None`, Ctrl-C, or Ctrl-D, instead of hanging or crashing.
+- **Security**: `_sanitize_repo_name` now also rejects Windows-style drive-letter paths (e.g. `C:\Windows\System32`), matching the backslash handling `_safe_tar_members` already used elsewhere in this file.
+
+### Fixed
+- Installing multiple repos with `--jobs > 1` now requires `--force`/`--yes` up front, since prompting for confirmation across threads at once isn't safe.
+- The `--jobs` error message now correctly mentions both `--force` and `--yes`.
+
+### Removed
+- Deleted `seeds/`, `schemas/`, and `migrations/` — three vestigial directories from an earlier scaffold, each containing nothing but a stray backup file.
+
+### Docs
+- Clarified in the README that `gitlab.com/mabodu/pluck` is an intentional mirror (GitLab hosts canonical development + CI), not a stale link.
+- Fixed `opencode.md` reporting a stale test count.
+
+### Added (tests)
+- `test_confirm_install_refuses_when_noninteractive`, `test_install_cancelled_without_force_noninteractive`, `test_install_proceeds_with_force`, `test_install_proceeds_when_user_types_y`, `test_install_cancelled_when_user_types_n`, `test_parallel_install_without_force_exits` — cover the new confirmation gate.
+- `test_confirm_install_refuses_when_stdin_is_none`, `test_confirm_install_eof_at_prompt_is_treated_as_no`, `test_confirm_install_ctrl_c_exits_cleanly`, `test_parallel_install_with_force_succeeds` — cover the crash fixes and the parallel-with-force path.
+- `test_rejects_windows_drive_path_backslash`, `test_rejects_windows_drive_path_forward_slash`, `test_allows_name_with_colon_but_no_drive_pattern` — cover the sanitizer hardening.
+- Total: 145 tests passing (up from 132).
+
 ## [0.5.0] - 2026-06-30
 
 ### Fixed (code review follow-ups)
