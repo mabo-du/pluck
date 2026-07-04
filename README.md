@@ -16,6 +16,8 @@
   <img src="https://gitlab.com/mabodu/pluck/badges/main/pipeline.svg" alt="GitLab CI">
 </p>
 
+> **Note:** Development and CI run on [GitLab](https://gitlab.com/mabodu/pluck); this GitHub repo is a mirror.
+
 ---
 
 - [Quick Start](#-quick-start)
@@ -185,7 +187,7 @@ Any git hosting platform that follows the standard `host/owner/repo` URL pattern
 ### From Source
 
 ```bash
-# Clone the repository
+# Clone the repository (GitLab is canonical - see note above; this repo is a mirror)
 git clone https://gitlab.com/mabodu/pluck.git
 cd pluck
 
