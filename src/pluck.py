@@ -340,6 +340,15 @@ def _sanitize_repo_name(name):
     """Reject repo names that could cause path traversal."""
     if ".." in name or name.startswith("/") or name.startswith("\\"):
         return None
+    # Windows-style absolute paths (e.g. "C:\Windows\System32") start with
+    # neither "/" nor "\", so the checks above miss them. Harmless on the
+    # POSIX platforms we officially support (backslash isn't a separator
+    # there), but nothing stops this running on Windows, where pathlib
+    # treats a segment like this as absolute and silently discards
+    # whatever base directory it's joined onto - so reject it outright,
+    # matching how _safe_tar_members already handles this same trick.
+    if re.match(r"^[a-zA-Z]:[\\/]", name):
+        return None
     return name
 
 

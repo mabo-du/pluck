@@ -379,6 +379,17 @@ class TestSanitizeRepoName:
     def test_rejects_leading_backslash(self):
         assert _sanitize_repo_name("\\windows\\system32") is None
 
+    def test_rejects_windows_drive_path_backslash(self):
+        assert _sanitize_repo_name("C:\\Windows\\System32") is None
+
+    def test_rejects_windows_drive_path_forward_slash(self):
+        assert _sanitize_repo_name("C:/Windows/System32") is None
+
+    def test_allows_name_with_colon_but_no_drive_pattern(self):
+        # Sanity check the new regex isn't overly broad - a colon alone,
+        # not shaped like "<letter>:<slash>", should still be allowed.
+        assert _sanitize_repo_name("weird:name") == "weird:name"
+
 
 class TestIsExecutable:
     def _make_file(self, name, content=""):
