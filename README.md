@@ -1,3 +1,6 @@
+> [!NOTE]
+> This repository will be moving to the [dig-tools](https://github.com/dig-tools) organization soon.
+
 <p align="center">
   <img src="assets/images/pluck_logo.png" alt="pluck" width="400"/>
   <br>
